@@ -262,6 +262,7 @@ CAD file discovery, deduplication, and curation for downstream automation.
 | Land survey domain rules | ✅ Done | `references/land-survey-civil.md` |
 | Agent config (OpenAI) | ✅ Done | `agents/openai.yaml` |
 | Parse script prototype | ⚠️ Partial | `scripts/parse_dwg.py` |
+| Topology degenerate-edge guard | ✅ Done | Zero-length edges are skipped during topology build (covered by `tests/test_dwg_parser.py`) |
 | **Remaining** | | |
 | Production parser implementation | ❌ Todo | Prototype only |
 | Topology graph extraction | ❌ Todo | Spec in SKILL.md |

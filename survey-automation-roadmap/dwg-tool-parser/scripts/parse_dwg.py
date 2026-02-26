@@ -1951,6 +1951,8 @@ def build_topology(entities: list[dict[str, Any]], tolerance: float, precision: 
             end = normalize_point(edge_def.get("end"), precision)
             if not start or not end:
                 continue
+            if start == end:
+                continue
 
             start_node = ensure_node(start)
             end_node = ensure_node(end)
