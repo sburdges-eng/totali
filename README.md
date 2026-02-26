@@ -1,6 +1,6 @@
 # TOTaLi-Assisted Drafting Pipeline
 
-**Defensible Spatial Drafting Pipeline**
+## Defensible Spatial Drafting Pipeline
 
 - AI Classifies (probabilistic, non-authoritative)
 - Algorithms Measure (deterministic computational geometry)
@@ -20,6 +20,14 @@
 pip install -r requirements.txt
 ```
 
+## Testing
+
+```bash
+python3 -m pytest tests/
+```
+
+CI runs the same suite on push and pull requests to `main` via `.github/workflows/ci.yml`.
+
 ## Usage
 
 ```bash
@@ -34,7 +42,7 @@ python -m totali.main --input data.las --phase extract
 
 ## Architecture
 
-```
+```text
 AI output → DRAFT layer only → Human review → Accept/Reject → Certified layer
                                                     ↓
                                               Audit log (chain of custody)
