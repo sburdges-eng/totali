@@ -126,6 +126,11 @@ class TestEntityRecord:
         r2 = shield._entity_record("b", "LINE", "L", geo)
         assert r1["source_hash"] == r2["source_hash"]
 
+    def test_bbox_added_for_numpy_geometry(self, shield):
+        geo = np.array([[1.0, 2.0, 3.0], [4.0, 8.0, 9.0], [2.0, 3.0, 1.0]])
+        rec = shield._entity_record("abc123", "POLYLINE", "LAYER-DRAFT", geo)
+        assert rec["bbox"] == [1.0, 2.0, 4.0, 8.0]
+
 
 class TestDXFWriting:
     def test_manual_fallback_writes_file(self, shield, sample_extraction, tmp_path):

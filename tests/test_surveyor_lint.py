@@ -89,6 +89,18 @@ class TestOcclusionCheck:
         result = linter._check_occlusion(entity, ext)
         assert result == OcclusionType.UNKNOWN
 
+    def test_bbox_overlap_with_occlusion_zone_returns_unknown(self, linter):
+        entity = {"id": "x", "layer": "TOTaLi-SURV-BRKLN-DRAFT", "bbox": [0.0, 0.0, 2.0, 2.0]}
+        ext = ExtractionResult(occlusion_zones=[np.array([[1, 1], [3, 1], [2, 3]])])
+        result = linter._check_occlusion(entity, ext)
+        assert result == OcclusionType.UNKNOWN
+
+    def test_bbox_no_overlap_returns_none(self, linter):
+        entity = {"id": "x", "layer": "TOTaLi-SURV-BRKLN-DRAFT", "bbox": [0.0, 0.0, 1.0, 1.0]}
+        ext = ExtractionResult(occlusion_zones=[np.array([[10, 10], [11, 10], [10, 11]])])
+        result = linter._check_occlusion(entity, ext)
+        assert result == OcclusionType.NONE
+
 
 class TestLintReport:
     def test_report_structure(self, linter, sample_classification):

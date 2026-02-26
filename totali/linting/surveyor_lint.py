@@ -109,7 +109,18 @@ class SurveyorLinter(PipelinePhase):
         if "OCCLUSION" in layer:
             return OcclusionType.UNKNOWN
 
-        # Simplified: in production, would do spatial intersection
+        bbox = entity.get("bbox")
+        if bbox is not None:
+            ex0, ey0, ex1, ey1 = bbox
+            for zone in extraction.occlusion_zones:
+                if zone is None or len(zone) == 0:
+                    continue
+                z = zone[:, :2]
+                zx0, zy0 = z.min(axis=0)
+                zx1, zy1 = z.max(axis=0)
+                if ex0 <= zx1 and ex1 >= zx0 and ey0 <= zy1 and ey1 >= zy0:
+                    return OcclusionType.UNKNOWN
+
         return OcclusionType.NONE
 
     def _generate_lint_report(self, items: list, extraction) -> dict:
