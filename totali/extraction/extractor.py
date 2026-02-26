@@ -15,24 +15,33 @@ from scipy.spatial import Delaunay
 from scipy.ndimage import uniform_filter1d
 
 from totali.pipeline.models import (
-    PhaseResult, ExtractionResult, ClassificationResult, OcclusionType
+    PhaseResult, ExtractionResult, ClassificationResult
 )
+from totali.pipeline.base_phase import PipelinePhase
+from totali.pipeline.context import PipelineContext
 from totali.audit.logger import AuditLogger
 
 
-class DeterministicExtractor:
+class DeterministicExtractor(PipelinePhase):
     def __init__(self, config: dict, audit: AuditLogger):
-        self.config = config
-        self.audit = audit
+        super().__init__(config, audit)
         self.dtm_cfg = config.get("dtm", {})
         self.brk_cfg = config.get("breaklines", {})
         self.cnt_cfg = config.get("contours", {})
         self.plan_cfg = config.get("planimetrics", {})
 
-    def run(self, context: dict) -> PhaseResult:
-        xyz = context.get("points_xyz")
-        classification: ClassificationResult = context.get("classification")
-        output_dir = Path(context.get("output_dir", "output"))
+    def validate_inputs(self, context: PipelineContext) -> tuple[bool, list[str]]:
+        errors: list[str] = []
+        if context.points_xyz is None:
+            errors.append("points_xyz missing; run geodetic phase first")
+        if context.classification is None:
+            errors.append("classification missing; run segment phase first")
+        return len(errors) == 0, errors
+
+    def run(self, context: PipelineContext) -> PhaseResult:
+        xyz = context.points_xyz
+        classification: ClassificationResult | None = context.classification
+        output_dir = Path(context.output_dir)
 
         if xyz is None or classification is None:
             return PhaseResult(
@@ -133,11 +142,11 @@ class DeterministicExtractor:
                     f"{report['contours_minor']+report['contours_index']} contours",
             data={
                 "extraction": result,
-                "crs": context.get("crs"),
-                "stats": context.get("stats"),
+                "crs": context.crs,
+                "stats": context.stats,
                 "classification": classification,
                 "points_xyz": xyz,
-                "input_hash": context.get("input_hash"),
+                "input_hash": context.input_hash,
             },
             output_files=[report_path],
         )

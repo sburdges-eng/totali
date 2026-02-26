@@ -13,6 +13,7 @@ setup(
         "pyproj>=3.5.0",
         "pyyaml>=6.0",
         "click>=8.1.0",
+        "pydantic>=2.0.0",
     ],
     extras_require={
         "ml": ["onnxruntime>=1.14.0", "open3d>=0.17.0"],

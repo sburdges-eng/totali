@@ -18,22 +18,35 @@ from pyproj.exceptions import CRSError
 from totali.pipeline.models import (
     PhaseResult, CRSMetadata, PointCloudStats
 )
+from totali.pipeline.base_phase import PipelinePhase
+from totali.pipeline.context import PipelineContext
 from totali.audit.logger import AuditLogger
 
 
-class GeodeticGatekeeper:
+class GeodeticGatekeeper(PipelinePhase):
+    phase_name = "geodetic"
+
     def __init__(self, config: dict, audit: AuditLogger):
-        self.config = config
-        self.audit = audit
+        super().__init__(config, audit)
         self.allowed_crs = [CRS.from_user_input(c) for c in config.get("allowed_crs", [])]
         self.allowed_epsg = [c.to_epsg() for c in self.allowed_crs]
         self.reject_mixed_datum = config.get("reject_on_mixed_datum", True)
         self.reject_missing_crs = config.get("reject_on_missing_crs", True)
         self.geoid_model = config.get("geoid_model", "GEOID18")
 
-    def run(self, context: dict) -> PhaseResult:
-        input_path = Path(context["input_path"])
-        output_dir = Path(context["output_dir"])
+    def validate_inputs(self, context: PipelineContext) -> tuple[bool, list[str]]:
+        errors: list[str] = []
+        if not context.input_path:
+            errors.append("input_path is required")
+        elif not Path(context.input_path).exists():
+            errors.append(f"Input path does not exist: {context.input_path}")
+        if self.allowed_epsg and self.allowed_epsg[0] is None:
+            errors.append("allowed_crs contains non-EPSG CRS; expected EPSG-backed entries")
+        return len(errors) == 0, errors
+
+    def run(self, context: PipelineContext) -> PhaseResult:
+        input_path = Path(context.input_path)
+        output_dir = Path(context.output_dir)
 
         # Read point cloud
         las = laspy.read(str(input_path))

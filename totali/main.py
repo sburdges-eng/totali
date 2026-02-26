@@ -13,6 +13,7 @@ from pathlib import Path
 from datetime import datetime
 
 from totali.pipeline.orchestrator import PipelineOrchestrator
+from totali.pipeline.context import PipelineConfig
 from totali.audit.logger import AuditLogger
 
 
@@ -33,7 +34,7 @@ def main(input_path, config_path, phase, output_dir, project_id, dry_run):
 
     # Load config
     with open(config_path, "r") as f:
-        config = yaml.safe_load(f)
+        config = PipelineConfig.model_validate(yaml.safe_load(f))
 
     # Setup
     output_path = Path(output_dir)
@@ -43,9 +44,9 @@ def main(input_path, config_path, phase, output_dir, project_id, dry_run):
 
     # Init audit logger
     audit = AuditLogger(
-        log_dir=config["audit"]["log_dir"],
+        log_dir=config.audit.log_dir,
         project_id=project_id,
-        hash_algo=config["audit"]["hash_algorithm"],
+        hash_algo=config.audit.hash_algorithm,
     )
 
     audit.log("pipeline_start", {
@@ -64,7 +65,7 @@ def main(input_path, config_path, phase, output_dir, project_id, dry_run):
         return
 
     # Run pipeline
-    pipeline = PipelineOrchestrator(config, audit, output_path)
+    pipeline = PipelineOrchestrator(config.model_dump(), audit, output_path)
 
     try:
         result = pipeline.run(input_path, phase=phase)

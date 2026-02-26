@@ -14,23 +14,30 @@ from typing import Optional
 from totali.pipeline.models import (
     PhaseResult, GeometryStatus, LintItem, OcclusionType
 )
+from totali.pipeline.base_phase import PipelinePhase
+from totali.pipeline.context import PipelineContext
 from totali.audit.logger import AuditLogger
 
 
-class SurveyorLinter:
+class SurveyorLinter(PipelinePhase):
     def __init__(self, config: dict, audit: AuditLogger):
-        self.config = config
-        self.audit = audit
+        super().__init__(config, audit)
         self.ghost_opacity = config.get("ghost_opacity", 0.4)
         self.flag_colors = config.get("flag_colors", {})
         self.auto_promote = False  # HARDCODED FALSE – never auto-promote
         self.require_pls = config.get("require_pls_signature", True)
 
-    def run(self, context: dict) -> PhaseResult:
-        manifest = context.get("manifest", {})
-        extraction = context.get("extraction")
-        classification = context.get("classification")
-        output_dir = Path(context.get("output_dir", "output"))
+    def validate_inputs(self, context: PipelineContext) -> tuple[bool, list[str]]:
+        errors: list[str] = []
+        if context.manifest is None:
+            errors.append("manifest missing; run shield phase first")
+        return len(errors) == 0, errors
+
+    def run(self, context: PipelineContext) -> PhaseResult:
+        manifest = context.manifest or {}
+        extraction = context.extraction
+        classification = context.classification
+        output_dir = Path(context.output_dir)
 
         entities = manifest.get("entities", [])
 

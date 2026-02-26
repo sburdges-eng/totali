@@ -17,22 +17,29 @@ import numpy as np
 from totali.pipeline.models import (
     PhaseResult, ExtractionResult, HealingReport, GeometryStatus
 )
+from totali.pipeline.base_phase import PipelinePhase
+from totali.pipeline.context import PipelineContext
 from totali.audit.logger import AuditLogger
 
 
-class CADShield:
+class CADShield(PipelinePhase):
     def __init__(self, config: dict, audit: AuditLogger):
-        self.config = config
-        self.audit = audit
+        super().__init__(config, audit)
         self.format = config.get("format", "dxf")
         self.healing_cfg = config.get("geometry_healing", {})
         self.layer_map = config.get("layer_mapping", {})
         self.timeout = config.get("middleware_timeout_sec", 30)
         self.max_retry = config.get("max_retry", 3)
 
-    def run(self, context: dict) -> PhaseResult:
-        extraction: ExtractionResult = context.get("extraction")
-        output_dir = Path(context.get("output_dir", "output"))
+    def validate_inputs(self, context: PipelineContext) -> tuple[bool, list[str]]:
+        errors: list[str] = []
+        if context.extraction is None:
+            errors.append("extraction missing; run extract phase first")
+        return len(errors) == 0, errors
+
+    def run(self, context: PipelineContext) -> PhaseResult:
+        extraction: ExtractionResult | None = context.extraction
+        output_dir = Path(context.output_dir)
 
         if extraction is None:
             return PhaseResult(
@@ -79,10 +86,10 @@ class CADShield:
                 "manifest": entity_manifest,
                 "healing": healing,
                 "extraction": extraction,
-                "crs": context.get("crs"),
-                "stats": context.get("stats"),
-                "classification": context.get("classification"),
-                "input_hash": context.get("input_hash"),
+                "crs": context.crs,
+                "stats": context.stats,
+                "classification": context.classification,
+                "input_hash": context.input_hash,
             },
             output_files=[dxf_path, manifest_path],
         )
