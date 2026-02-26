@@ -1,0 +1,16 @@
+<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <TargetFramework>net8.0-windows</TargetFramework>
+    <LangVersion>latest</LangVersion>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <AssemblyName>Civil3DBridgeStub</AssemblyName>
+    <RootNamespace>Civil3DBridgeStub</RootNamespace>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <Reference Include="AcMgd" />
+    <Reference Include="AcDbMgd" />
+    <Reference Include="AcCoreMgd" />
+  </ItemGroup>
+</Project>

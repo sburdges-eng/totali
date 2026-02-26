@@ -1,0 +1,32 @@
+[build-system]
+requires = ["setuptools>=68.0", "wheel"]
+build-backend = "setuptools.backends._legacy:_Backend"
+
+[project]
+name = "groundtruthos-data"
+version = "0.1.0"
+description = "Geospatial data pipeline for GroundTruthOS — download, tile, decimate, feature store, and knowledge graph."
+requires-python = ">=3.11"
+
+dependencies = [
+    "laspy[lazrs]>=2.5",
+    "numpy>=1.24",
+    "psycopg2-binary>=2.9",
+    "pyarrow>=14.0",
+    "duckdb>=0.9",
+    "pyyaml>=6.0",
+    "requests>=2.31",
+    "tqdm>=4.66",
+    "rasterio>=1.3",
+    "pyproj>=3.6",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=7.0",
+    "pytest-cov",
+    "ruff",
+]
+
+[tool.setuptools.packages.find]
+include = ["config*", "downloader*", "pipeline*", "storage*", "compliance*", "scripts*"]

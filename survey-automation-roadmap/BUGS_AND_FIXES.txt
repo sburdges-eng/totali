@@ -1,0 +1,52 @@
+SURVEY AUTOMATION ROADMAP — BUGS AND POSSIBLE FIXES (PLAIN TEXT ONLY)
+========================================================================
+
+1. PARSERS: POINT ROW COLUMN COUNT HARDCODED VS CONFIG
+   Bug: parsers.parse_csv_file() always expects exactly 11 columns for point rows (line 66) and 4 for field code rows. config["validation"]["required_point_columns"] can have a different length; the parser never uses it for column count, so config changes to required_point_columns do not change parser behavior. Mismatch can cause valid rows to be quarantined or invalid rows accepted.
+   Fix: Derive expected point column count from len(config["validation"]["required_point_columns"]) and use it instead of the literal 11 (and document or derive field-code column count from config if it becomes configurable). Validate that row length equals that count before parsing.
+
+2. PARSERS: DXF COORDINATE TYPE CHECK RELIES ON PYTHON 3.10+ SYNTAX
+   Bug: parsers.py lines 267–269 use isinstance(current.get("x"), float | type(None)). The union-in-isinstance syntax is valid only in Python 3.10+. pyproject.toml requires >=3.11, so this works today but is brittle if the requirement is ever relaxed.
+   Fix: Use isinstance(current.get("x"), (float, type(None))) for compatibility with older Python, or leave as-is and keep requires-python >= "3.11" explicitly.
+
+3. CONVERTER: SMOKE CHECK USES COMMAND TEMPLATE WITHOUT ENV
+   Bug: run_converter_command() expands the template with expand_command_template(command_template) and no env argument, so it uses os.environ. When the CLI calls run_converter_smoke_check(resolved_command, sample_crd), resolved_command is already env-expanded by run_static_converter_checks. So smoke check receives a string that may still contain {input} and {output}; run_converter_command then does .format(input=..., output=...) on it. If run_static_converter_checks was called with a custom env (e.g. in tests), that env is not passed into run_converter_smoke_check or run_converter_command, so smoke test could use a different environment than the one validated by static checks.
+   Fix: Pass env through from CLI/tests into run_converter_smoke_check and from there into run_converter_command (and expand_command_template) so the same environment is used for static checks and smoke run. Document that the same env is used for both.
+
+4. PIPELINE: CONVERTED BINARY CRD FALLBACK PARSING
+   Bug: When a binary CRD is converted to CSV, pipeline.py (lines 354–361) detects the converted file type. If the type is not point_csv, field_code_csv, mixed_csv, or crd_text, it falls back to parse_csv_file(converted_path, "mixed_csv", ...). For a converter that outputs a valid point CSV, detection might still return something else (e.g. due to header format), so we force "mixed_csv" and might mis-parse (e.g. first row treated as data, or all rows quarantined as unknown_schema).
+   Fix: If converted_type is not one of the supported CSV/crd_text types, either quarantine the converted file with a clear finding (e.g. "converter output format not recognized") instead of forcing mixed_csv, or add a dedicated "converted_point_csv" path that assumes point header when the converter is trusted.
+
+5. PIPELINE: PARQUET FAILURE STILL TOUCHES FILE
+   Bug: In _write_points_parquet (pipeline.py lines 163–164), on exception the code does path.touch(), creating an empty file. Callers then see a file present and may assume parquet wrote successfully; the finding is added but the artifact is misleading.
+   Fix: Do not touch the path on failure; leave the file absent so artifact presence matches success. Optionally remove a partially written file if parquet write fails partway.
+
+6. QC: DUPLICATE POINT_ID ONLY REPORTS SECOND OCCURRENCE
+   Bug: qc.run_qc() reports duplicate_point_id only for the later occurrence (the one that already had a prior in seen_ids). The first occurrence is never flagged, so reports show only one file/line per duplicate group.
+   Fix: Either report both (or all) occurrences of each duplicate point_id, or document that only the duplicate (second and subsequent) is reported and add the first occurrence’s file/line to the message or a detail field.
+
+7. CONFIG: CONVERTER_COMMAND ENV VAR NOT EXPANDED BY CONFIG
+   Bug: load_config() does not expand ${VAR} in crd.converter_command. Expansion happens later in converter code using os.environ. If config is loaded in a context where env differs from the one at run time (e.g. different process or env file loaded later), behavior can be inconsistent. Not a bug if design is "expand at use time."
+   Fix: Either document that expansion is at use time and that CRD_CONVERTER_COMMAND etc. must be set in the process that runs the pipeline, or add optional config-time expansion and document when it is used.
+
+8. CLI: PROFILE PRINTS JSON THEN WRITES SAME TO FILE
+   Bug: cmd_profile() writes the profile to the output path and then calls _print_json(profile), so the same JSON is printed to stdout. Scripts that both capture stdout and write to a file get duplicated output; redirecting only stdout is ambiguous.
+   Fix: Either print only when --output is not given, or write to file only and document that stdout is the profile JSON (current behavior), or add a flag to suppress stdout when writing to file.
+
+9. DETECTION: classify_text_points READS FILE TWICE
+   Bug: classify_text_points() does path.read_bytes()[:1024] to check binary, then path.open() to read lines. Two opens; on some systems or large trees this is redundant I/O.
+   Fix: Read once (e.g. read_bytes() for binary check, then decode and split into lines for the rest), or open once and read a small buffer for binary check then rewind or read the rest for line logic.
+
+10. MODELS: QCFinding.finding_id MUTATED AFTER CREATION
+    Bug: QCFinding is created with finding_id="", then _assign_finding_ids() mutates finding.finding_id in place. Dataclasses are mutable by default, so this works, but it breaks any assumption that findings are immutable once created (e.g. for hashing or caching).
+    Fix: Either document that finding_id is assigned later and findings are mutable until IDs are assigned, or refactor to build findings with IDs (e.g. pass run_id and index into _mk_finding and set finding_id there) so no post-creation mutation is needed.
+
+11. README / DOCS: SCRIPTS AND PATHS
+    Bug: README references scripts/dataset_mirror.sh and config paths; those exist. validation/verify_golden.py and write_last_validation.py are referenced; if validation/ is missing or scripts move, instructions are wrong.
+    Fix: Ensure README and operations docs match the repo layout. Add a note or CI check that referenced configs and scripts exist.
+
+12. CONVERTER: run_static_converter_checks UNRESOLVED VARS ON EXPANDED STRING
+    Bug: find_unresolved_env_vars(expanded_command) is called on the already-expanded command. So we only see refs that were not in env. That is correct for "unresolved" meaning "still in the string." But the check name "unresolved_env_vars" and message list vars by name; those names are correct only if the expanded string still contains ${VAR} or $VAR. So logic is correct; no code bug. Optional: also validate that the raw template (before expansion) does not contain unresolved refs when strict mode is desired.
+    Fix: None required unless you want a separate check for "template has refs that are not set in env" before expansion.
+
+END OF LIST

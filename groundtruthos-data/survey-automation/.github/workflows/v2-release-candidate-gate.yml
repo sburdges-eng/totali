@@ -1,0 +1,38 @@
+name: v2 Release Candidate Gate
+
+on:
+  workflow_dispatch:
+
+jobs:
+  v2-rc-gate:
+    runs-on: ubuntu-latest
+    env:
+      CRD_CONVERTER_COMMAND: "${{ github.workspace }}/scripts/converter --input {input} --output {output}"
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install package
+        run: |
+          python -m pip install --upgrade pip
+          pip install pytest
+          pip install -e .
+
+      - name: Run v2 release candidate gate
+        run: scripts/v2_release_candidate_gate.sh
+
+      - name: Upload release-candidate artifacts
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: v2-rc-gate-${{ github.run_number }}
+          path: |
+            artifacts/
+            validation/golden_results.json
+            validation/last_validation.md
+          retention-days: 14

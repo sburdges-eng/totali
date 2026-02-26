@@ -1,0 +1,13 @@
+{
+  "expected_exit_code": 0,
+  "expected_point_count": 2,
+  "expected_field_code_rule_count": 2,
+  "expected_dxf_entity_count": 0,
+  "expected_quarantined_row_count": 0,
+  "expected_quarantined_file_reasons": [],
+  "forbidden_finding_codes": [
+    "binary_crd_converter_missing",
+    "binary_crd_converter_failed",
+    "processing_error"
+  ]
+}

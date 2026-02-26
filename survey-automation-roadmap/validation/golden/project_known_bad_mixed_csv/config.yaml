@@ -1,0 +1,47 @@
+version: "1"
+
+project:
+  qc_profile: "strict"
+
+input:
+  include_globs:
+    - "validation/golden/project_known_bad_mixed_csv/input/**/*"
+
+normalization:
+  trim_strings: true
+  uppercase_field_code: true
+
+validation:
+  required_point_columns:
+    - "Point#"
+    - "Northing"
+    - "Easting"
+    - "Elevation"
+    - "Description"
+    - "DWG Description"
+    - "DWG Layer"
+    - "Locked"
+    - "Group"
+    - "Category"
+    - "LS Number"
+  required_field_code_columns:
+    - "Field Code"
+    - "Layer"
+    - "Symbol"
+    - "Linework"
+  fail_if_all_files_invalid: true
+
+crd:
+  mode: "auto"
+  converter_command: null
+
+remediation:
+  enabled: true
+  fix_blank_field_codes: true
+  drop_duplicate_tail_blocks: true
+  drop_malformed_footer_rows: true
+
+outputs:
+  formats:
+    - "csv"
+    - "parquet"

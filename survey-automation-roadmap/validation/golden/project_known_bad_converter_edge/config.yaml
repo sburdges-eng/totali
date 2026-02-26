@@ -1,0 +1,42 @@
+version: "1"
+
+project:
+  qc_profile: "strict"
+
+input:
+  include_globs:
+    - "validation/golden/project_known_bad_converter_edge/input/*.csv"
+    - "validation/golden/project_known_bad_converter_edge/input/*.crd"
+
+normalization:
+  trim_strings: true
+  uppercase_field_code: true
+
+validation:
+  required_point_columns:
+    - "Point#"
+    - "Northing"
+    - "Easting"
+    - "Elevation"
+    - "Description"
+    - "DWG Description"
+    - "DWG Layer"
+    - "Locked"
+    - "Group"
+    - "Category"
+    - "LS Number"
+  required_field_code_columns:
+    - "Field Code"
+    - "Layer"
+    - "Symbol"
+    - "Linework"
+  fail_if_all_files_invalid: true
+
+crd:
+  mode: "converter_required"
+  converter_command: "validation/golden/project_known_bad_converter_edge/input/bad_converter.sh {input} {output}"
+
+outputs:
+  formats:
+    - "csv"
+    - "parquet"

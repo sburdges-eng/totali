@@ -1,0 +1,16 @@
+quality:
+  min_heldout_score: 0.88
+  min_bucket_score: 0.8
+  max_failed_buckets: 0
+
+stability:
+  max_score_regression: 0.01
+
+cost:
+  max_cost_per_run_usd: 60.0
+
+latency:
+  max_p95_ms: 450.0
+
+curation:
+  min_hard_negative_share: 0.15

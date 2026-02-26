@@ -1,0 +1,40 @@
+  0
+SECTION
+  2
+HEADER
+  0
+ENDSEC
+  0
+SECTION
+  2
+ENTITIES
+  0
+POINT
+  5
+1A
+  8
+PNTS
+ 10
+1000.0
+ 20
+2000.0
+ 30
+300.0
+  0
+TEXT
+  5
+1B
+  8
+ANNOT
+ 10
+1001.0
+ 20
+2001.0
+ 30
+300.5
+  1
+SAMPLE
+  0
+ENDSEC
+  0
+EOF

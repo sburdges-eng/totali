@@ -1,0 +1,39 @@
+schemaVersion: "2.0.0"
+metadata:
+  rulePackId: "default-survey-bridge"
+  version: "1.0.0"
+precedence:
+  - "exact_code"
+  - "exact_phrase"
+  - "regex"
+  - "prefix"
+rules:
+  exact_code:
+    - id: "control_points"
+      match: "CP"
+      feature_code: "control_point"
+      feature_type: "point"
+      group_by: "per_point"
+    - id: "found_rebar"
+      match: "FREB"
+      feature_code: "found_rebar"
+      feature_type: "point"
+      group_by: "per_point"
+  exact_phrase:
+    - id: "top_shoulder"
+      match: "TOP SHOULDER"
+      feature_code: "top_shoulder"
+      feature_type: "point"
+      group_by: "per_point"
+  regex:
+    - id: "edge_of_pavement_regex"
+      pattern: "^EP(\\b|_)"
+      feature_code: "edge_of_pavement"
+      feature_type: "line_string"
+      group_by: "code_and_source"
+  prefix:
+    - id: "generic_topographic_prefix"
+      match: "TOP"
+      feature_code: "topographic_generic"
+      feature_type: "line_string"
+      group_by: "code_and_source"

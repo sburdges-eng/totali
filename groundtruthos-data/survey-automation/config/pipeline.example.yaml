@@ -1,0 +1,53 @@
+version: "1"
+
+input:
+  include_globs:
+    - "TOTaLi/**/*"
+  exclude_globs:
+    - "artifacts/**/*"
+
+normalization:
+  trim_strings: true
+  uppercase_field_code: true
+
+validation:
+  required_point_columns:
+    - "Point#"
+    - "Northing"
+    - "Easting"
+    - "Elevation"
+    - "Description"
+    - "DWG Description"
+    - "DWG Layer"
+    - "Locked"
+    - "Group"
+    - "Category"
+    - "LS Number"
+  required_field_code_columns:
+    - "Field Code"
+    - "Layer"
+    - "Symbol"
+    - "Linework"
+  fail_if_all_files_invalid: true
+  max_warning_count: null # Optional integer threshold for warning monitoring
+  duplicate_point_id_mode: "all_occurrences" # all_occurrences | per_point_id | within_file
+  unmapped_description_skip_categories: [] # Optional category names to skip for unmapped description QC
+  coordinate_bounds:
+    northing:
+      min: 0
+      max: 10000000
+    easting:
+      min: 0
+      max: 10000000
+    elevation:
+      min: -1000
+      max: 100000
+
+crd:
+  mode: "auto" # auto | converter_required | text_only
+  converter_command: null # Example: "my-crd-converter --input {input} --output {output}"
+
+outputs:
+  formats:
+    - "csv"
+    - "parquet"

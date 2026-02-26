@@ -1,0 +1,53 @@
+version: "1"
+
+input:
+  include_globs:
+    - "samples/input/**/*"
+  exclude_globs:
+    - "artifacts/**/*"
+
+normalization:
+  trim_strings: true
+  uppercase_field_code: true
+
+validation:
+  required_point_columns:
+    - "Point#"
+    - "Northing"
+    - "Easting"
+    - "Elevation"
+    - "Description"
+    - "DWG Description"
+    - "DWG Layer"
+    - "Locked"
+    - "Group"
+    - "Category"
+    - "LS Number"
+  required_field_code_columns:
+    - "Field Code"
+    - "Layer"
+    - "Symbol"
+    - "Linework"
+  fail_if_all_files_invalid: true
+  max_warning_count: null
+  duplicate_point_id_mode: "all_occurrences"
+  unmapped_description_skip_categories: []
+  coordinate_bounds:
+    northing:
+      min: 0
+      max: 10000000
+    easting:
+      min: 0
+      max: 10000000
+    elevation:
+      min: -1000
+      max: 100000
+
+crd:
+  mode: "converter_required"
+  converter_command: "${CRD_CONVERTER_COMMAND}"
+
+outputs:
+  formats:
+    - "csv"
+    - "parquet"

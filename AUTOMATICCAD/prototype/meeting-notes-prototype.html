@@ -1,0 +1,382 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>AUTOMATICCAD Meeting Notes Prototype</title>
+  <style>
+    :root {
+      color-scheme: light;
+      --bg: #f4f4f1;
+      --panel: #ffffff;
+      --text: #1f1f1f;
+      --muted: #606060;
+      --border: #d9d9d1;
+      --accent: #1f5f8b;
+      --accent-soft: #e7f1f8;
+      --ok: #1f7a3f;
+      --warn: #9a6b00;
+      --danger: #a40020;
+      --danger-soft: #fdecef;
+    }
+
+    * { box-sizing: border-box; }
+
+    body {
+      margin: 0;
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+      background: var(--bg);
+      color: var(--text);
+      line-height: 1.45;
+    }
+
+    .app {
+      max-width: 940px;
+      margin: 0 auto;
+      padding: 24px 16px 40px;
+    }
+
+    h1, h2, h3 { margin: 0 0 8px; }
+
+    .subtitle {
+      color: var(--muted);
+      margin: 0;
+      font-size: 14px;
+    }
+
+    .card {
+      background: var(--panel);
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      padding: 16px;
+      margin-top: 14px;
+    }
+
+    .stepper {
+      display: grid;
+      grid-template-columns: repeat(3, minmax(0, 1fr));
+      gap: 8px;
+      margin-top: 14px;
+    }
+
+    .step {
+      border: 1px solid var(--border);
+      background: #fff;
+      color: var(--text);
+      border-radius: 8px;
+      padding: 10px;
+      text-align: center;
+      font-size: 13px;
+      cursor: pointer;
+    }
+
+    .step.active {
+      border-color: var(--accent);
+      background: var(--accent-soft);
+      font-weight: 600;
+    }
+
+    .screen { display: none; }
+    .screen.active { display: block; }
+
+    .field {
+      margin-top: 10px;
+      display: grid;
+      gap: 6px;
+      max-width: 320px;
+    }
+
+    input[type="number"] {
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      padding: 9px 10px;
+      font-size: 14px;
+    }
+
+    .checklist {
+      display: grid;
+      gap: 8px;
+      margin-top: 8px;
+    }
+
+    .check {
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      padding: 10px;
+      background: #fff;
+      display: flex;
+      align-items: flex-start;
+      gap: 8px;
+    }
+
+    .controls {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 8px;
+      margin-top: 12px;
+    }
+
+    button {
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      padding: 9px 12px;
+      font-size: 14px;
+      cursor: pointer;
+      background: #fff;
+      color: var(--text);
+    }
+
+    button.primary {
+      border-color: var(--accent);
+      background: var(--accent);
+      color: #fff;
+    }
+
+    button.ghost {
+      background: transparent;
+    }
+
+    .status {
+      margin-top: 12px;
+      border-radius: 8px;
+      padding: 10px;
+      border: 1px solid var(--border);
+      display: none;
+      font-size: 14px;
+    }
+
+    .status.show { display: block; }
+    .status.ok {
+      border-color: #b9e2c6;
+      background: #eaf7ee;
+      color: var(--ok);
+    }
+
+    .status.warn {
+      border-color: #e8d8a8;
+      background: #fff8e6;
+      color: var(--warn);
+    }
+
+    .status.danger {
+      border-color: #edbcc8;
+      background: var(--danger-soft);
+      color: var(--danger);
+    }
+
+    .acceptance {
+      display: grid;
+      gap: 8px;
+      margin-top: 8px;
+      padding-left: 18px;
+    }
+
+    .assumption {
+      font-size: 13px;
+      color: var(--muted);
+      margin-top: 8px;
+    }
+
+    .summary-grid {
+      display: grid;
+      grid-template-columns: repeat(2, minmax(0, 1fr));
+      gap: 8px;
+      margin-top: 8px;
+    }
+
+    .summary-item {
+      border: 1px solid var(--border);
+      border-radius: 8px;
+      padding: 10px;
+      background: #fff;
+    }
+
+    @media (max-width: 720px) {
+      .stepper { grid-template-columns: 1fr; }
+      .summary-grid { grid-template-columns: 1fr; }
+    }
+  </style>
+</head>
+<body>
+  <main class="app">
+    <header>
+      <h1>AUTOMATICCAD Weekly Execution Prototype</h1>
+      <p class="subtitle">Minimal clickable flow extracted from project meeting notes.</p>
+      <p class="assumption">
+        Assumption: notes source is <code>GOALS.md</code> and <code>NEXT_STEPS.md</code> (updated 2026-02-22).
+      </p>
+    </header>
+
+    <section class="card">
+      <h2>Core Flow</h2>
+      <ol>
+        <li>Resolve all 22 failed paths with final disposition.</li>
+        <li>Freeze include/exclude rules and fixture classification.</li>
+        <li>Build curated outputs and run final quality signoff.</li>
+      </ol>
+      <h3>Acceptance Criteria (from notes)</h3>
+      <ul class="acceptance">
+        <li>Every one of 22 failures is marked recovered, excluded, or unreachable with reason.</li>
+        <li>Curation rules are explicit and frozen to prevent drift between reruns.</li>
+        <li>Curated files map back to canonical hash references.</li>
+        <li>Production DWG/DXF inputs are validated before final report.</li>
+      </ul>
+    </section>
+
+    <nav class="stepper" aria-label="Flow steps">
+      <button class="step active" data-step="0">1. Resolve Errors</button>
+      <button class="step" data-step="1">2. Freeze Rules</button>
+      <button class="step" data-step="2">3. Signoff</button>
+    </nav>
+
+    <section class="card screen active" data-screen="0">
+      <h2>Step 1: Resolve Failed Paths</h2>
+      <p>Gate: all 22 failed paths have a final disposition.</p>
+
+      <div class="field">
+        <label for="resolvedCount">Resolved path count (out of 22)</label>
+        <input id="resolvedCount" type="number" min="0" max="22" value="22" />
+      </div>
+
+      <div class="controls">
+        <button class="ghost" id="presetHappy">Preset Happy Path</button>
+        <button class="ghost" id="presetEdgeA">Preset Edge: unresolved paths</button>
+        <button class="primary" id="toStep2">Continue</button>
+      </div>
+
+      <div id="step1Status" class="status"></div>
+    </section>
+
+    <section class="card screen" data-screen="1">
+      <h2>Step 2: Freeze Curation Rules</h2>
+      <p>Gate: rules are explicit, fixtures are tagged, and rules are frozen for reproducibility.</p>
+
+      <div class="checklist">
+        <label class="check"><input type="checkbox" id="rulesWritten" checked /> Include/exclude rules are written.</label>
+        <label class="check"><input type="checkbox" id="fixturesTagged" checked /> Fixtures are separated from production CAD.</label>
+        <label class="check"><input type="checkbox" id="rulesFrozen" checked /> Curation rules are frozen for reruns.</label>
+      </div>
+
+      <div class="controls">
+        <button class="ghost" id="presetEdgeB">Preset Edge: rules not frozen</button>
+        <button class="ghost" id="backTo1">Back</button>
+        <button class="primary" id="toStep3">Continue</button>
+      </div>
+
+      <div id="step2Status" class="status"></div>
+    </section>
+
+    <section class="card screen" data-screen="2">
+      <h2>Step 3: Final Signoff</h2>
+      <p>Confirm build and readiness checks from the weekly plan.</p>
+
+      <div class="checklist">
+        <label class="check"><input type="checkbox" id="manifestReady" checked /> Curated manifest and summary are generated.</label>
+        <label class="check"><input type="checkbox" id="hashTraceable" checked /> Each curated file has a canonical hash reference.</label>
+        <label class="check"><input type="checkbox" id="dwgValidated" checked /> Production DWG/DXF list is validated.</label>
+      </div>
+
+      <div class="controls">
+        <button class="ghost" id="backTo2">Back</button>
+        <button class="primary" id="finishFlow">Complete Prototype Flow</button>
+      </div>
+
+      <div id="finalStatus" class="status"></div>
+
+      <div class="summary-grid" aria-live="polite">
+        <div class="summary-item"><strong>Freeze Readiness:</strong> <span id="freezeReadiness">Pending</span></div>
+        <div class="summary-item"><strong>Determinism Risk:</strong> <span id="determinismRisk">Pending</span></div>
+        <div class="summary-item"><strong>Security Impact:</strong> <span id="securityImpact">No runtime cloud dependency introduced</span></div>
+        <div class="summary-item"><strong>Runtime Coupling:</strong> <span id="runtimeCoupling">None introduced</span></div>
+      </div>
+    </section>
+  </main>
+
+  <script>
+    const steps = Array.from(document.querySelectorAll('.step'));
+    const screens = Array.from(document.querySelectorAll('.screen'));
+
+    function goToStep(stepIndex) {
+      steps.forEach((step, idx) => step.classList.toggle('active', idx === stepIndex));
+      screens.forEach((screen, idx) => screen.classList.toggle('active', idx === stepIndex));
+    }
+
+    steps.forEach((stepButton, index) => {
+      stepButton.addEventListener('click', () => goToStep(index));
+    });
+
+    function showStatus(element, kind, message) {
+      element.className = `status show ${kind}`;
+      element.textContent = message;
+    }
+
+    const resolvedCountInput = document.getElementById('resolvedCount');
+    const step1Status = document.getElementById('step1Status');
+    const step2Status = document.getElementById('step2Status');
+    const finalStatus = document.getElementById('finalStatus');
+
+    document.getElementById('presetHappy').addEventListener('click', () => {
+      resolvedCountInput.value = 22;
+      document.getElementById('rulesWritten').checked = true;
+      document.getElementById('fixturesTagged').checked = true;
+      document.getElementById('rulesFrozen').checked = true;
+      document.getElementById('manifestReady').checked = true;
+      document.getElementById('hashTraceable').checked = true;
+      document.getElementById('dwgValidated').checked = true;
+      showStatus(step1Status, 'ok', 'Happy path preset applied.');
+    });
+
+    document.getElementById('presetEdgeA').addEventListener('click', () => {
+      resolvedCountInput.value = 19;
+      showStatus(step1Status, 'warn', 'Edge state applied: unresolved failures remain.');
+    });
+
+    document.getElementById('toStep2').addEventListener('click', () => {
+      const resolved = Number(resolvedCountInput.value || 0);
+      if (resolved < 22) {
+        showStatus(step1Status, 'danger', `BLOCKED: ${22 - resolved} failed paths still missing disposition.`);
+        return;
+      }
+      showStatus(step1Status, 'ok', 'Gate passed: all failed paths resolved.');
+      goToStep(1);
+    });
+
+    document.getElementById('presetEdgeB').addEventListener('click', () => {
+      document.getElementById('rulesFrozen').checked = false;
+      showStatus(step2Status, 'warn', 'Edge state applied: rules are not frozen.');
+    });
+
+    document.getElementById('backTo1').addEventListener('click', () => goToStep(0));
+    document.getElementById('toStep3').addEventListener('click', () => {
+      const rulesWritten = document.getElementById('rulesWritten').checked;
+      const fixturesTagged = document.getElementById('fixturesTagged').checked;
+      const rulesFrozen = document.getElementById('rulesFrozen').checked;
+      if (!(rulesWritten && fixturesTagged && rulesFrozen)) {
+        showStatus(step2Status, 'danger', 'DRIFT RISK: curation rules are incomplete or unfrozen.');
+        return;
+      }
+      showStatus(step2Status, 'ok', 'Gate passed: curation controls are frozen and traceable.');
+      goToStep(2);
+    });
+
+    document.getElementById('backTo2').addEventListener('click', () => goToStep(1));
+
+    document.getElementById('finishFlow').addEventListener('click', () => {
+      const manifestReady = document.getElementById('manifestReady').checked;
+      const hashTraceable = document.getElementById('hashTraceable').checked;
+      const dwgValidated = document.getElementById('dwgValidated').checked;
+      const ready = manifestReady && hashTraceable && dwgValidated;
+
+      if (ready) {
+        showStatus(finalStatus, 'ok', 'READY: flow completed with all acceptance criteria met.');
+        document.getElementById('freezeReadiness').textContent = 'Ready';
+        document.getElementById('determinismRisk').textContent = 'Low';
+      } else {
+        showStatus(finalStatus, 'danger', 'BUILD BLOCKED: final acceptance checks are incomplete.');
+        document.getElementById('freezeReadiness').textContent = 'Blocked';
+        document.getElementById('determinismRisk').textContent = 'Elevated';
+      }
+    });
+  </script>
+</body>
+</html>

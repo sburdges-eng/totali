@@ -1,0 +1,18 @@
+{
+  "expected_exit_code": 2,
+  "expected_point_count": 1,
+  "expected_field_code_rule_count": 0,
+  "expected_dxf_entity_count": 0,
+  "expected_quarantined_row_count": 0,
+  "expected_quarantined_file_reasons": [
+    "processing_error"
+  ],
+  "required_finding_codes": [
+    "processing_error",
+    "no_field_code_rules"
+  ],
+  "forbidden_finding_codes": [
+    "all_files_invalid",
+    "binary_crd_converter_missing"
+  ]
+}

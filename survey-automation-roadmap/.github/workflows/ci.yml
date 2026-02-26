@@ -1,0 +1,93 @@
+name: CI
+
+on:
+  push:
+    branches: ["main"]
+  pull_request:
+  workflow_dispatch:
+  schedule:
+    - cron: "0 15 * * 1-5"
+
+jobs:
+  tests:
+    if: github.event_name == 'push' || github.event_name == 'pull_request' || github.event_name == 'workflow_dispatch'
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install package
+        run: |
+          python -m pip install --upgrade pip
+          pip install pytest
+          pip install -e .
+
+      - name: Run unit tests
+        run: pytest -q tests/unit
+
+      - name: Run integration smoke tests
+        run: pytest -q tests/integration
+
+  scheduled-production-handoff:
+    if: github.event_name == 'schedule' || github.event_name == 'workflow_dispatch'
+    runs-on: ubuntu-latest
+    env:
+      CRD_CONVERTER_COMMAND: "${{ github.workspace }}/scripts/converter --input {input} --output {output}"
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Setup Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install package
+        run: |
+          python -m pip install --upgrade pip
+          pip install pytest
+          pip install -e .
+
+      - name: Preflight converter readiness
+        run: survey-automation check-converter --config config/pipeline.ci.yaml
+
+      - name: Run production pipeline
+        run: |
+          RUN_ID="ci-${GITHUB_RUN_NUMBER}-$(date -u +%Y%m%dT%H%M%SZ)"
+          echo "RUN_ID=$RUN_ID" >> "$GITHUB_ENV"
+          set +e
+          survey-automation run \
+            --input-dir . \
+            --config config/pipeline.ci.yaml \
+            --output-dir artifacts \
+            --run-id "$RUN_ID"
+          PIPELINE_EXIT_CODE=$?
+          set -e
+          echo "PIPELINE_EXIT_CODE=$PIPELINE_EXIT_CODE" >> "$GITHUB_ENV"
+          if [ "$PIPELINE_EXIT_CODE" -eq 0 ] || [ "$PIPELINE_EXIT_CODE" -eq 2 ]; then
+            echo "Pipeline finished with acceptable exit code: $PIPELINE_EXIT_CODE"
+          else
+            echo "Pipeline failed with fatal exit code: $PIPELINE_EXIT_CODE"
+            exit "$PIPELINE_EXIT_CODE"
+          fi
+
+      - name: Verify golden datasets
+        run: |
+          python validation/verify_golden.py
+          python validation/write_last_validation.py
+
+      - name: Upload production artifacts
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: survey-automation-${{ env.RUN_ID }}
+          path: |
+            artifacts/${{ env.RUN_ID }}
+            validation/golden_results.json
+            validation/last_validation.md
+          retention-days: 14

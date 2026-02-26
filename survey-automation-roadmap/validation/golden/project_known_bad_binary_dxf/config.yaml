@@ -1,0 +1,41 @@
+version: "1"
+
+project:
+  qc_profile: "strict"
+
+input:
+  include_globs:
+    - "validation/golden/project_known_bad_binary_dxf/input/**/*"
+
+normalization:
+  trim_strings: true
+  uppercase_field_code: true
+
+validation:
+  required_point_columns:
+    - "Point#"
+    - "Northing"
+    - "Easting"
+    - "Elevation"
+    - "Description"
+    - "DWG Description"
+    - "DWG Layer"
+    - "Locked"
+    - "Group"
+    - "Category"
+    - "LS Number"
+  required_field_code_columns:
+    - "Field Code"
+    - "Layer"
+    - "Symbol"
+    - "Linework"
+  fail_if_all_files_invalid: true
+
+crd:
+  mode: "auto"
+  converter_command: null
+
+outputs:
+  formats:
+    - "csv"
+    - "parquet"

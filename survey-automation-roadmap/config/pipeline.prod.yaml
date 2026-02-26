@@ -1,0 +1,64 @@
+version: "1"
+
+project:
+  qc_profile: "standard"
+  baseline_namespace: "totali-prod"
+
+input:
+  include_globs:
+    - "TOTaLi/**/*.csv"
+    - "TOTaLi/**/*.dxf"
+    - "TOTaLi/**/*.crd"
+    - "TOTaLi/**/*.txt"
+    - "TOTaLi/**/*.pts"
+    - "TOTaLi/**/*.asc"
+    - ".local-datasets/TOTaLi/**/*.csv"
+    - ".local-datasets/TOTaLi/**/*.dxf"
+    - ".local-datasets/TOTaLi/**/*.crd"
+    - ".local-datasets/TOTaLi/**/*.txt"
+    - ".local-datasets/TOTaLi/**/*.pts"
+    - ".local-datasets/TOTaLi/**/*.asc"
+
+normalization:
+  trim_strings: true
+  uppercase_field_code: true
+
+validation:
+  required_point_columns:
+    - "Point#"
+    - "Northing"
+    - "Easting"
+    - "Elevation"
+    - "Description"
+    - "DWG Description"
+    - "DWG Layer"
+    - "Locked"
+    - "Group"
+    - "Category"
+    - "LS Number"
+  required_field_code_columns:
+    - "Field Code"
+    - "Layer"
+    - "Symbol"
+    - "Linework"
+  fail_if_all_files_invalid: true
+  coordinate_bounds:
+    northing:
+      min: 0
+      max: 10000000
+    easting:
+      min: 0
+      max: 10000000
+    elevation:
+      min: -1000
+      max: 100000
+
+crd:
+  mode: "converter_required"
+  converter_command: "${CRD_CONVERTER_COMMAND}"
+  converter_failure_mode: "fatal"
+
+outputs:
+  formats:
+    - "csv"
+    - "parquet"

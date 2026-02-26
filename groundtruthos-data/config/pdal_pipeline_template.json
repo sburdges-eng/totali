@@ -1,0 +1,38 @@
+{
+  "pipeline": [
+    {
+      "type": "readers.las",
+      "filename": "{{input_file}}",
+      "spatialreference": "{{input_srid}}"
+    },
+    {
+      "type": "filters.outlier",
+      "method": "statistical",
+      "mean_k": "{{outlier_mean_k}}",
+      "multiplier": "{{outlier_multiplier}}"
+    },
+    {
+      "type": "filters.stats"
+    },
+    {
+      "type": "filters.decimation",
+      "step": "{{decimation_step}}"
+    },
+    {
+      "type": "filters.chipper",
+      "capacity": "{{chipper_capacity}}"
+    },
+    {
+      "type": "writers.pgpointcloud",
+      "connection": "{{pg_connection}}",
+      "table": "{{pg_table}}",
+      "compression": "dimensional",
+      "srid": "{{pg_srid}}"
+    },
+    {
+      "type": "writers.copc",
+      "filename": "{{output_copc_file}}",
+      "threads": "{{copc_threads}}"
+    }
+  ]
+}

@@ -1,0 +1,20 @@
+{
+  "quality": {
+    "heldout_score": 0.91,
+    "failure_buckets": {
+      "hard_negative": 0.89,
+      "underperforming_class": 0.86,
+      "converter_edge": 0.88
+    }
+  },
+  "stability": {},
+  "cost": {
+    "cost_per_run_usd": 24.5
+  },
+  "latency": {
+    "p95_ms": 210.0
+  },
+  "curation": {
+    "hard_negative_share": 0.22
+  }
+}

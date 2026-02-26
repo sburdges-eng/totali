@@ -1,0 +1,86 @@
+solid jepa_audio_draft
+  facet normal 0.000000 0.000000 510972.000000
+    outer loop
+      vertex 0.000000 0.000000 0.000000
+      vertex 948.000000 0.000000 0.000000
+      vertex 948.000000 539.000000 0.000000
+    endloop
+  endfacet
+  facet normal 0.000000 0.000000 510972.000000
+    outer loop
+      vertex 0.000000 0.000000 0.000000
+      vertex 948.000000 539.000000 0.000000
+      vertex 0.000000 539.000000 0.000000
+    endloop
+  endfacet
+  facet normal 0.000000 -205848.720000 510972.000000
+    outer loop
+      vertex 0.000000 0.000000 299.860000
+      vertex 948.000000 0.000000 299.860000
+      vertex 948.000000 539.000000 517.000000
+    endloop
+  endfacet
+  facet normal 0.000000 -205848.720000 510972.000000
+    outer loop
+      vertex 0.000000 0.000000 299.860000
+      vertex 948.000000 539.000000 517.000000
+      vertex 0.000000 539.000000 517.000000
+    endloop
+  endfacet
+  facet normal 0.000000 -284267.280000 0.000000
+    outer loop
+      vertex 0.000000 0.000000 0.000000
+      vertex 948.000000 0.000000 0.000000
+      vertex 948.000000 0.000000 299.860000
+    endloop
+  endfacet
+  facet normal 0.000000 -284267.280000 0.000000
+    outer loop
+      vertex 0.000000 0.000000 0.000000
+      vertex 948.000000 0.000000 299.860000
+      vertex 0.000000 0.000000 299.860000
+    endloop
+  endfacet
+  facet normal 278663.000000 0.000000 0.000000
+    outer loop
+      vertex 948.000000 0.000000 0.000000
+      vertex 948.000000 539.000000 0.000000
+      vertex 948.000000 539.000000 517.000000
+    endloop
+  endfacet
+  facet normal 161624.540000 0.000000 0.000000
+    outer loop
+      vertex 948.000000 0.000000 0.000000
+      vertex 948.000000 539.000000 517.000000
+      vertex 948.000000 0.000000 299.860000
+    endloop
+  endfacet
+  facet normal 0.000000 490116.000000 0.000000
+    outer loop
+      vertex 948.000000 539.000000 0.000000
+      vertex 0.000000 539.000000 0.000000
+      vertex 0.000000 539.000000 517.000000
+    endloop
+  endfacet
+  facet normal 0.000000 490116.000000 -0.000000
+    outer loop
+      vertex 948.000000 539.000000 0.000000
+      vertex 0.000000 539.000000 517.000000
+      vertex 948.000000 539.000000 517.000000
+    endloop
+  endfacet
+  facet normal -161624.540000 0.000000 0.000000
+    outer loop
+      vertex 0.000000 539.000000 0.000000
+      vertex 0.000000 0.000000 0.000000
+      vertex 0.000000 0.000000 299.860000
+    endloop
+  endfacet
+  facet normal -278663.000000 0.000000 0.000000
+    outer loop
+      vertex 0.000000 539.000000 0.000000
+      vertex 0.000000 0.000000 299.860000
+      vertex 0.000000 539.000000 517.000000
+    endloop
+  endfacet
+endsolid jepa_audio_draft

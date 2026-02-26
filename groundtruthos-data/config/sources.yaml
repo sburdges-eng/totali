@@ -1,0 +1,116 @@
+usgs_3dep:
+  name: "USGS 3DEP LiDAR Point Cloud"
+  base_url: "https://tnmaccess.nationalmap.gov/api/v1/products"
+  s3_bucket: "usgs-lidar-public"
+  s3_requester_pays: true
+  license: "Public Domain"
+  commercial_use: true
+  attribution_required: false
+  redistribution: true
+  format: "LAZ"
+  rate_limit_rps: 1.0
+  max_concurrent: 5
+
+usgs_dem:
+  name: "USGS 3DEP Digital Elevation Model"
+  base_url: "https://tnmaccess.nationalmap.gov/api/v1/products"
+  license: "Public Domain"
+  commercial_use: true
+  attribution_required: false
+  redistribution: true
+  format: "GeoTIFF"
+  rate_limit_rps: 1.0
+  max_concurrent: 5
+
+noaa_digital_coast:
+  name: "NOAA Digital Coast LiDAR"
+  base_url: "https://coast.noaa.gov/htdata/lidar/"
+  license: "Public Domain"
+  commercial_use: true
+  attribution_required: false
+  redistribution: true
+  format: "LAZ"
+  rate_limit_rps: 1.0
+  max_concurrent: 3
+
+netherlands_ahn4:
+  name: "Netherlands AHN4 LiDAR"
+  base_url: "https://service.pdok.nl/rws/ahn/atom/v1_0/"
+  license: "CC0"
+  commercial_use: true
+  attribution_required: false
+  redistribution: true
+  format: "LAZ"
+  rate_limit_rps: 1.0
+  max_concurrent: 3
+
+uk_ea_lidar:
+  name: "UK Environment Agency LiDAR"
+  base_url: "https://environment.data.gov.uk/DefraDataDownload/?Mode=survey"
+  license: "OGL v3"
+  commercial_use: true
+  attribution_required: true
+  attribution_text: "Contains Environment Agency information. Crown copyright and database right."
+  redistribution: true
+  format: "LAZ"
+  rate_limit_rps: 1.0
+  max_concurrent: 3
+
+ssurgo:
+  name: "USDA NRCS SSURGO Soils"
+  base_url: "https://sdmdataaccess.nrcs.usda.gov/"
+  license: "Public Domain"
+  commercial_use: true
+  attribution_required: false
+  redistribution: true
+  format: "SHP"
+  rate_limit_rps: 1.0
+  max_concurrent: 2
+
+gssurgo:
+  name: "USDA NRCS gSSURGO Gridded Soils"
+  base_url: "https://nrcs.app.box.com/v/soils/"
+  license: "Public Domain"
+  commercial_use: true
+  attribution_required: false
+  redistribution: true
+  format: "GeoTIFF"
+  rate_limit_rps: 0.5
+  max_concurrent: 2
+
+soilgrids:
+  name: "ISRIC SoilGrids"
+  base_url: "https://rest.isric.org/soilgrids/v2.0/"
+  license: "CC-BY 4.0"
+  commercial_use: true
+  attribution_required: true
+  attribution_text: "SoilGrids - ISRIC World Soil Information"
+  redistribution: true
+  format: "GeoTIFF"
+  rate_limit_rps: 0.5
+  max_concurrent: 2
+
+copernicus_dem:
+  name: "Copernicus DEM GLO-30"
+  s3_bucket: "copernicus-dem-30m"
+  s3_requester_pays: false
+  license: "Copernicus License"
+  commercial_use: true
+  attribution_required: true
+  attribution_text: "Copernicus DEM - GLO-30. European Space Agency"
+  redistribution: true
+  format: "GeoTIFF"
+  rate_limit_rps: 5.0
+  max_concurrent: 10
+
+opentopography:
+  name: "OpenTopography"
+  base_url: "https://portal.opentopography.org/API/otCatalog"
+  license: "VARIES_PER_DATASET"
+  commercial_use: null  # must check per dataset
+  attribution_required: true
+  redistribution: null  # must check per dataset
+  format: "LAZ"
+  rate_limit_rps: 0.5
+  max_concurrent: 2
+  requires_api_key: true

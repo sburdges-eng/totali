@@ -1,0 +1,170 @@
+solid jepa_audio_draft
+  facet normal 0.000000 0.000000 779220.000000
+    outer loop
+      vertex 0.000000 0.000000 0.000000
+      vertex 1443.000000 0.000000 0.000000
+      vertex 1443.000000 540.000000 0.000000
+    endloop
+  endfacet
+  facet normal 0.000000 0.000000 779220.000000
+    outer loop
+      vertex 0.000000 0.000000 0.000000
+      vertex 1443.000000 540.000000 0.000000
+      vertex 0.000000 540.000000 0.000000
+    endloop
+  endfacet
+  facet normal 0.000000 -255151.260000 779220.000000
+    outer loop
+      vertex 0.000000 0.000000 244.180000
+      vertex 1443.000000 0.000000 244.180000
+      vertex 1443.000000 540.000000 421.000000
+    endloop
+  endfacet
+  facet normal 0.000000 -255151.260000 779220.000000
+    outer loop
+      vertex 0.000000 0.000000 244.180000
+      vertex 1443.000000 540.000000 421.000000
+      vertex 0.000000 540.000000 421.000000
+    endloop
+  endfacet
+  facet normal 0.000000 -352351.740000 0.000000
+    outer loop
+      vertex 0.000000 0.000000 0.000000
+      vertex 1443.000000 0.000000 0.000000
+      vertex 1443.000000 0.000000 244.180000
+    endloop
+  endfacet
+  facet normal 0.000000 -352351.740000 0.000000
+    outer loop
+      vertex 0.000000 0.000000 0.000000
+      vertex 1443.000000 0.000000 244.180000
+      vertex 0.000000 0.000000 244.180000
+    endloop
+  endfacet
+  facet normal 227340.000000 0.000000 0.000000
+    outer loop
+      vertex 1443.000000 0.000000 0.000000
+      vertex 1443.000000 540.000000 0.000000
+      vertex 1443.000000 540.000000 421.000000
+    endloop
+  endfacet
+  facet normal 131857.200000 0.000000 0.000000
+    outer loop
+      vertex 1443.000000 0.000000 0.000000
+      vertex 1443.000000 540.000000 421.000000
+      vertex 1443.000000 0.000000 244.180000
+    endloop
+  endfacet
+  facet normal 0.000000 607503.000000 0.000000
+    outer loop
+      vertex 1443.000000 540.000000 0.000000
+      vertex 0.000000 540.000000 0.000000
+      vertex 0.000000 540.000000 421.000000
+    endloop
+  endfacet
+  facet normal 0.000000 607503.000000 -0.000000
+    outer loop
+      vertex 1443.000000 540.000000 0.000000
+      vertex 0.000000 540.000000 421.000000
+      vertex 1443.000000 540.000000 421.000000
+    endloop
+  endfacet
+  facet normal -131857.200000 0.000000 0.000000
+    outer loop
+      vertex 0.000000 540.000000 0.000000
+      vertex 0.000000 0.000000 0.000000
+      vertex 0.000000 0.000000 244.180000
+    endloop
+  endfacet
+  facet normal -227340.000000 0.000000 0.000000
+    outer loop
+      vertex 0.000000 540.000000 0.000000
+      vertex 0.000000 0.000000 244.180000
+      vertex 0.000000 540.000000 421.000000
+    endloop
+  endfacet
+  facet normal 0.000000 0.000000 8458.989251
+    outer loop
+      vertex 664.732591 0.000000 18.626421
+      vertex 778.267409 0.000000 18.626421
+      vertex 778.267409 74.505684 18.626421
+    endloop
+  endfacet
+  facet normal 0.000000 0.000000 8458.989251
+    outer loop
+      vertex 664.732591 0.000000 18.626421
+      vertex 778.267409 74.505684 18.626421
+      vertex 664.732591 74.505684 18.626421
+    endloop
+  endfacet
+  facet normal 0.000000 0.000000 8458.989251
+    outer loop
+      vertex 664.732591 0.000000 82.127493
+      vertex 778.267409 0.000000 82.127493
+      vertex 778.267409 74.505684 82.127493
+    endloop
+  endfacet
+  facet normal 0.000000 0.000000 8458.989251
+    outer loop
+      vertex 664.732591 0.000000 82.127493
+      vertex 778.267409 74.505684 82.127493
+      vertex 664.732591 74.505684 82.127493
+    endloop
+  endfacet
+  facet normal 0.000000 -7209.582531 0.000000
+    outer loop
+      vertex 664.732591 0.000000 18.626421
+      vertex 778.267409 0.000000 18.626421
+      vertex 778.267409 0.000000 82.127493
+    endloop
+  endfacet
+  facet normal 0.000000 -7209.582531 0.000000
+    outer loop
+      vertex 664.732591 0.000000 18.626421
+      vertex 778.267409 0.000000 82.127493
+      vertex 664.732591 0.000000 82.127493
+    endloop
+  endfacet
+  facet normal 4731.190793 0.000000 0.000000
+    outer loop
+      vertex 778.267409 0.000000 18.626421
+      vertex 778.267409 74.505684 18.626421
+      vertex 778.267409 74.505684 82.127493
+    endloop
+  endfacet
+  facet normal 4731.190793 0.000000 0.000000
+    outer loop
+      vertex 778.267409 0.000000 18.626421
+      vertex 778.267409 74.505684 82.127493
+      vertex 778.267409 0.000000 82.127493
+    endloop
+  endfacet
+  facet normal 0.000000 7209.582531 0.000000
+    outer loop
+      vertex 778.267409 74.505684 18.626421
+      vertex 664.732591 74.505684 18.626421
+      vertex 664.732591 74.505684 82.127493
+    endloop
+  endfacet
+  facet normal 0.000000 7209.582531 -0.000000
+    outer loop
+      vertex 778.267409 74.505684 18.626421
+      vertex 664.732591 74.505684 82.127493
+      vertex 778.267409 74.505684 82.127493
+    endloop
+  endfacet
+  facet normal -4731.190793 0.000000 0.000000
+    outer loop
+      vertex 664.732591 74.505684 18.626421
+      vertex 664.732591 0.000000 18.626421
+      vertex 664.732591 0.000000 82.127493
+    endloop
+  endfacet
+  facet normal -4731.190793 0.000000 0.000000
+    outer loop
+      vertex 664.732591 74.505684 18.626421
+      vertex 664.732591 0.000000 82.127493
+      vertex 664.732591 74.505684 82.127493
+    endloop
+  endfacet
+endsolid jepa_audio_draft

@@ -1,0 +1,27 @@
+{
+  "schemaVersion": "1.0.0",
+  "artifactType": "adjustment_report",
+  "invariants": [
+    "schema_version_required",
+    "deterministic_key_order",
+    "relative_paths_only",
+    "pair_covariance_propagation_used"
+  ],
+  "metadata": {
+    "generated_at": "2026-02-24T00:00:00+00:00",
+    "solver_path": "cholesky",
+    "iterations": 5,
+    "condition_number": 1234.0
+  },
+  "paths": {
+    "stations_adjusted": "laser/stations_adjusted.csv",
+    "covariance_blocks": "laser/covariance_blocks.csv",
+    "rpp_adjacency": "laser/rpp_adjacency.csv"
+  },
+  "data": {
+    "converged": true,
+    "posterior_variance_factor": 1.0,
+    "residual_norm": 0.01,
+    "rpp_fail_count": 0
+  }
+}

@@ -1,0 +1,249 @@
+#!/usr/bin/env python3
+from __future__ import annotations
+
+import argparse
+import csv
+import math
+import os
+import re
+import struct
+import sys
+import tempfile
+from pathlib import Path
+
+POINT_HEADER = [
+    "Point#",
+    "Northing",
+    "Easting",
+    "Elevation",
+    "Description",
+    "DWG Description",
+    "DWG Layer",
+    "Locked",
+    "Group",
+    "Category",
+    "LS Number",
+]
+SIGNATURE = b"New CRD Format2"
+RECORD_SIZE = 66
+POINT_ID_LEN = 10
+DESC_LEN = 32
+POINT_ID_RE = re.compile(r"^[A-Za-z0-9._:+-]{1,10}$")
+
+
+def _decode_text(raw: bytes) -> str:
+    return raw.split(b"\x00", 1)[0].decode("latin-1", errors="replace").strip()
+
+
+def _clean_text(value: str) -> str:
+    return "".join(ch for ch in value if ch.isprintable()).strip()
+
+
+def _is_plausible_coord(value: float) -> bool:
+    return math.isfinite(value) and abs(value) <= 1e9
+
+
+def _in_expected_bounds(northing: float, easting: float, elevation: float) -> bool:
+    return 0 <= northing <= 10_000_000 and 0 <= easting <= 10_000_000 and -1000 <= elevation <= 100_000
+
+
+def _score_alignment(payload: bytes, start: int) -> int:
+    end = min(len(payload) - RECORD_SIZE + 1, start + (RECORD_SIZE * 500))
+    if start < 0 or start >= end:
+        return -1
+
+    score = 0
+    parsed = 0
+    for offset in range(start, end, RECORD_SIZE):
+        block = payload[offset : offset + RECORD_SIZE]
+        point_id = _decode_text(block[0:POINT_ID_LEN])
+        northing, easting, elevation = struct.unpack("<ddd", block[POINT_ID_LEN : POINT_ID_LEN + 24])
+        if not (_is_plausible_coord(northing) and _is_plausible_coord(easting) and _is_plausible_coord(elevation)):
+            continue
+
+        description = _decode_text(block[POINT_ID_LEN + 24 : POINT_ID_LEN + 24 + DESC_LEN])
+        if not point_id and not description and abs(northing) <= 1e-15 and abs(easting) <= 1e-15 and abs(elevation) <= 1e-15:
+            continue
+
+        parsed += 1
+        if point_id and POINT_ID_RE.fullmatch(point_id):
+            score += 4
+            if point_id[0].isdigit():
+                score += 2
+        elif point_id:
+            score -= 2
+
+        if _in_expected_bounds(northing, easting, elevation):
+            score += 4
+            if northing > 100 and easting > 100:
+                score += 1
+        else:
+            score -= 2
+        if description:
+            score += 1
+
+    return score if parsed > 0 else -1
+
+
+def _parse_binary_records(payload: bytes) -> list[tuple[str, float, float, float, str]]:
+    sig_index = payload.find(SIGNATURE)
+    if sig_index < 0:
+        raise ValueError("CRD binary signature not found")
+
+    sig_end = sig_index + len(SIGNATURE)
+    first_offset = -1
+    best_score = -1
+    for start in range(max(0, sig_end), min(len(payload), sig_end + 128)):
+        score = _score_alignment(payload, start)
+        if score > best_score:
+            best_score = score
+            first_offset = start
+
+    if first_offset < 0:
+        raise ValueError("Could not locate CRD binary point record section")
+
+    records: list[tuple[str, float, float, float, str]] = []
+    for offset in range(first_offset, len(payload) - RECORD_SIZE + 1, RECORD_SIZE):
+        block = payload[offset : offset + RECORD_SIZE]
+        point_id = _decode_text(block[0:POINT_ID_LEN])
+        northing, easting, elevation = struct.unpack("<ddd", block[POINT_ID_LEN : POINT_ID_LEN + 24])
+        if not (_is_plausible_coord(northing) and _is_plausible_coord(easting) and _is_plausible_coord(elevation)):
+            continue
+        if not _in_expected_bounds(northing, easting, elevation):
+            continue
+
+        description = _clean_text(_decode_text(block[POINT_ID_LEN + 24 : POINT_ID_LEN + 24 + DESC_LEN]))
+        if not point_id and not description and abs(northing) <= 1e-15 and abs(easting) <= 1e-15 and abs(elevation) <= 1e-15:
+            continue
+        if not point_id or not POINT_ID_RE.fullmatch(point_id):
+            continue
+        records.append((point_id, northing, easting, elevation, description))
+
+    if not records:
+        raise ValueError("No valid CRD point records were decoded")
+    return records
+
+
+def _parse_text_records(path: Path) -> list[tuple[str, float, float, float, str]]:
+    records: list[tuple[str, float, float, float, str]] = []
+    for line in path.read_text(encoding="utf-8", errors="replace").splitlines():
+        stripped = line.strip()
+        if not stripped or stripped.startswith("#"):
+            continue
+        tokens = [token for token in re.split(r"[\s,]+", stripped) if token]
+        if len(tokens) < 4:
+            continue
+        point_id = tokens[0]
+        if not POINT_ID_RE.fullmatch(point_id):
+            continue
+        try:
+            northing = float(tokens[1])
+            easting = float(tokens[2])
+            elevation = float(tokens[3])
+        except ValueError:
+            continue
+        if not _in_expected_bounds(northing, easting, elevation):
+            continue
+        description = _clean_text(" ".join(tokens[4:]) if len(tokens) > 4 else "")
+        records.append((point_id, northing, easting, elevation, description))
+    if not records:
+        raise ValueError("No point records parsed")
+    return records
+
+
+def _parse_crd(path: Path) -> list[tuple[str, float, float, float, str]]:
+    payload = path.read_bytes()
+    is_binary = SIGNATURE in payload or b"\x00" in payload[:1024]
+    if is_binary:
+        return _parse_binary_records(payload)
+    return _parse_text_records(path)
+
+
+def _build_parser() -> argparse.ArgumentParser:
+    parser = argparse.ArgumentParser(description="Convert CRD to point CSV")
+    parser.add_argument("positional", nargs="*", help="Positional form: <input> <output>")
+    parser.add_argument("--input", dest="input_path", help="Input CRD path")
+    parser.add_argument("--output", dest="output_path", help="Output CSV path")
+    return parser
+
+
+def _resolve_paths(args: argparse.Namespace) -> tuple[Path, Path]:
+    input_path = args.input_path
+    output_path = args.output_path
+    if args.positional:
+        if len(args.positional) != 2:
+            raise ValueError("Positional mode requires exactly two values: <input> <output>")
+        if input_path or output_path:
+            raise ValueError("Use either positional args or --input/--output, not both")
+        input_path, output_path = args.positional
+    if not input_path or not output_path:
+        raise ValueError("Missing required paths: provide --input/--output or positional <input> <output>")
+    return Path(input_path).resolve(), Path(output_path).resolve()
+
+
+def _format_number(value: float) -> str:
+    if value == 0:
+        return "0"
+    return f"{value:.6f}".rstrip("0").rstrip(".")
+
+
+def main(argv: list[str] | None = None) -> int:
+    parser = _build_parser()
+    args = parser.parse_args(argv)
+
+    try:
+        input_path, output_path = _resolve_paths(args)
+    except ValueError as exc:
+        print(str(exc), file=sys.stderr)
+        return 2
+
+    if not input_path.exists():
+        print(f"Input CRD does not exist: {input_path}", file=sys.stderr)
+        return 3
+
+    try:
+        rows = _parse_crd(input_path)
+    except Exception as exc:
+        print(f"Failed to parse CRD: {exc}", file=sys.stderr)
+        return 4
+
+    output_path.parent.mkdir(parents=True, exist_ok=True)
+    tmp_path = ""
+    try:
+        with tempfile.NamedTemporaryFile(
+            mode="w",
+            encoding="utf-8",
+            newline="",
+            dir=output_path.parent,
+            prefix=f"{output_path.name}.",
+            suffix=".tmp",
+            delete=False,
+        ) as handle:
+            tmp_path = handle.name
+            writer = csv.writer(handle)
+            writer.writerow(POINT_HEADER)
+            for point_id, northing, easting, elevation, description in rows:
+                writer.writerow(
+                    [
+                        point_id,
+                        _format_number(northing),
+                        _format_number(easting),
+                        _format_number(elevation),
+                        description,
+                        description,
+                        "",
+                        "",
+                        "",
+                        "Converted",
+                        "",
+                    ]
+                )
+        os.replace(tmp_path, output_path)
+    finally:
+        if tmp_path and os.path.exists(tmp_path):
+            os.unlink(tmp_path)
+    return 0
+
+
+if __name__ == "__main__":
+    raise SystemExit(main())

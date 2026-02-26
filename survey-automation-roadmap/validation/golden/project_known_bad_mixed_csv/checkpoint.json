@@ -1,0 +1,17 @@
+{
+  "expected_exit_code": 2,
+  "expected_point_count": 1,
+  "expected_field_code_rule_count": 2,
+  "expected_dxf_entity_count": 0,
+  "expected_quarantined_row_count": 0,
+  "expected_quarantined_file_reasons": [],
+  "required_finding_codes": [
+    "auto_remediated_blank_field_code",
+    "auto_remediated_duplicate_tail_block",
+    "auto_remediated_malformed_footer_row"
+  ],
+  "forbidden_finding_codes": [
+    "missing_field_code",
+    "all_files_invalid"
+  ]
+}

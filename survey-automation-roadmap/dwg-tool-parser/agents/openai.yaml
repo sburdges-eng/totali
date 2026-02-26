@@ -1,0 +1,4 @@
+interface:
+  display_name: "DWG Tool Parser"
+  short_description: "Parse civil CAD into survey-ready JSON insights"
+  default_prompt: "Use $dwg-tool-parser to analyze this DWG for parcel, contour, centerline, utility, and topology insights."

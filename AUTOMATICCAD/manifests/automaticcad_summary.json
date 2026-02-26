@@ -1,0 +1,185 @@
+{
+  "generated_at": "2026-02-18T01:34:17",
+  "source_root": "/System/Volumes/Data",
+  "excluded_top_level": [
+    "Volumes"
+  ],
+  "dest_root": "/System/Volumes/Data/Users/seanburdges/AUTOMATICCAD",
+  "extensions": [
+    ".3mf",
+    ".asm",
+    ".blend",
+    ".catpart",
+    ".catproduct",
+    ".dwg",
+    ".dxf",
+    ".fcstd",
+    ".iam",
+    ".idw",
+    ".ifc",
+    ".iges",
+    ".igs",
+    ".ipt",
+    ".jt",
+    ".obj",
+    ".par",
+    ".prt",
+    ".psm",
+    ".rvt",
+    ".sab",
+    ".sat",
+    ".scad",
+    ".skp",
+    ".sldasm",
+    ".slddrw",
+    ".sldprt",
+    ".step",
+    ".stl",
+    ".stp",
+    ".x_b",
+    ".x_t"
+  ],
+  "counts": {
+    "scanned_files": 3064920,
+    "matched_files": 382,
+    "unique_or_canonical": 160,
+    "duplicates": 200,
+    "copied_files": 160,
+    "copy_errors": 0,
+    "error_count": 22
+  },
+  "bytes": {
+    "copied_bytes": 85039244
+  },
+  "matched_by_extension": {
+    ".dwg": 17,
+    ".dxf": 11,
+    ".fcstd": 40,
+    ".ifc": 3,
+    ".igs": 4,
+    ".obj": 113,
+    ".scad": 1,
+    ".step": 2,
+    ".stl": 20,
+    ".stp": 171
+  },
+  "outputs": {
+    "manifest_csv": "/System/Volumes/Data/Users/seanburdges/AUTOMATICCAD/manifests/automaticcad_manifest.csv",
+    "summary_json": "/System/Volumes/Data/Users/seanburdges/AUTOMATICCAD/manifests/automaticcad_summary.json",
+    "report_md": "/System/Volumes/Data/Users/seanburdges/AUTOMATICCAD/manifests/AUTOMATICCAD_REPORT_2026-02-18.md",
+    "files_root": "/System/Volumes/Data/Users/seanburdges/AUTOMATICCAD/files"
+  },
+  "errors_sample": [
+    {
+      "path": "/System/Volumes/Data/Users/seanburdges/Library/CloudStorage/GoogleDrive-seanblariat@gmail.com/Other computers/USB and External Devices/iPhone (2)/TEST SEAN.dwg",
+      "stage": "hash",
+      "error": "[Errno 60] Operation timed out"
+    },
+    {
+      "path": "/System/Volumes/Data/Users/seanburdges/Library/CloudStorage/GoogleDrive-seanblariat@gmail.com/Other computers/My Laptop/Documents/IntelliCAD10.1x64/Emergency Saved Drawings/Training__Saved_After_Crash_2022-07-07_08.20.15_Salvaged.dwg",
+      "stage": "hash",
+      "error": "[Errno 60] Operation timed out"
+    },
+    {
+      "path": "/System/Volumes/Data/Users/seanburdges/Library/CloudStorage/GoogleDrive-seanblariat@gmail.com/Other computers/My Laptop/Downloads/21053 - EXPORT recieved 8-5-2022 for water line (1).dwg",
+      "stage": "hash",
+      "error": "[Errno 60] Operation timed out"
+    },
+    {
+      "path": "/System/Volumes/Data/Users/seanburdges/Library/CloudStorage/GoogleDrive-seanblariat@gmail.com/Other computers/My Laptop/Downloads/110311 WATER BASE.dwg",
+      "stage": "hash",
+      "error": "[Errno 60] Operation timed out"
+    },
+    {
+      "path": "/System/Volumes/Data/Users/seanburdges/Library/CloudStorage/GoogleDrive-seanblariat@gmail.com/Other computers/My Laptop/Downloads/Poncha Meadows2.dwg",
+      "stage": "hash",
+      "error": "[Errno 60] Operation timed out"
+    },
+    {
+      "path": "/System/Volumes/Data/Users/seanburdges/Library/CloudStorage/GoogleDrive-seanblariat@gmail.com/Other computers/My Laptop/Downloads/Poncha Meadows2 (1).dwg",
+      "stage": "hash",
+      "error": "[Errno 60] Operation timed out"
+    },
+    {
+      "path": "/System/Volumes/Data/Users/seanburdges/Library/CloudStorage/GoogleDrive-seanblariat@gmail.com/Other computers/My Laptop/Downloads/21-034 PRELIM 220717.dwg",
+      "stage": "hash",
+      "error": "[Errno 60] Operation timed out"
+    },
+    {
+      "path": "/System/Volumes/Data/Users/seanburdges/Library/CloudStorage/GoogleDrive-seanblariat@gmail.com/Other computers/My Laptop/Downloads/21053 - EXPORT recieved 8-5-2022 for water line.dwg",
+      "stage": "hash",
+      "error": "[Errno 60] Operation timed out"
+    },
+    {
+      "path": "/System/Volumes/Data/Users/seanburdges/Library/CloudStorage/GoogleDrive-seanblariat@gmail.com/My Drive/TOTaLi/XR23173-Sur ASCII.dxf",
+      "stage": "hash",
+      "error": "[Errno 60] Operation timed out"
+    },
+    {
+      "path": "/System/Volumes/Data/Users/seanburdges/Library/CloudStorage/GoogleDrive-seanblariat@gmail.com/My Drive/TOTaLi/IIII.dxf",
+      "stage": "hash",
+      "error": "[Errno 60] Operation timed out"
+    },
+    {
+      "path": "/System/Volumes/Data/Users/seanburdges/Library/CloudStorage/GoogleDrive-seanblariat@gmail.com/My Drive/TOTaLi/XR23173-Sur.dxf",
+      "stage": "hash",
+      "error": "[Errno 60] Operation timed out"
+    },
+    {
+      "path": "/System/Volumes/Data/Users/seanburdges/Library/CloudStorage/GoogleDrive-seanblariat@gmail.com/My Drive/TOTaLi/XRF23173-Civil2013 EXP.dwg",
+      "stage": "hash",
+      "error": "[Errno 60] Operation timed out"
+    },
+    {
+      "path": "/System/Volumes/Data/Users/seanburdges/Library/CloudStorage/OneDrive-Personal/JUCE 2/examples 2/DemoRunner/Builds/Android/app/src/main/assets/teapot.obj",
+      "stage": "hash",
+      "error": "[Errno 60] Operation timed out"
+    },
+    {
+      "path": "/System/Volumes/Data/Users/seanburdges/Library/CloudStorage/OneDrive-Personal/JUCE 2/examples 2/Assets/teapot.obj",
+      "stage": "hash",
+      "error": "[Errno 60] Operation timed out"
+    },
+    {
+      "path": "/System/Volumes/Data/Users/seanburdges/Library/CloudStorage/OneDrive-Personal/JUCE 2/extras 2/AudioPluginHost/Builds/Android/app/src/main/assets/teapot.obj",
+      "stage": "hash",
+      "error": "[Errno 60] Operation timed out"
+    },
+    {
+      "path": "/System/Volumes/Data/Users/seanburdges/Library/CloudStorage/OneDrive-Personal/CODE/DOWLOADS/JUCE 4/examples/DemoRunner/Builds/Android/app/src/main/assets/teapot.obj",
+      "stage": "hash",
+      "error": "[Errno 60] Operation timed out"
+    },
+    {
+      "path": "/System/Volumes/Data/Users/seanburdges/Library/CloudStorage/OneDrive-Personal/CODE/DOWLOADS/JUCE 4/examples/Assets/teapot.obj",
+      "stage": "hash",
+      "error": "[Errno 60] Operation timed out"
+    },
+    {
+      "path": "/System/Volumes/Data/Users/seanburdges/Library/CloudStorage/OneDrive-Personal/CODE/DOWLOADS/JUCE 4/extras/AudioPluginHost/Builds/Android/app/src/main/assets/teapot.obj",
+      "stage": "hash",
+      "error": "[Errno 60] Operation timed out"
+    },
+    {
+      "path": "/System/Volumes/Data/Users/seanburdges/Library/CloudStorage/GoogleDrive-sburdges@gmail.com/My Drive/TEST_SEAN_MAX_R13_Carlson.dxf",
+      "stage": "hash",
+      "error": "[Errno 60] Operation timed out"
+    },
+    {
+      "path": "/System/Volumes/Data/Users/seanburdges/Library/CloudStorage/GoogleDrive-sburdges@gmail.com/My Drive/110311 WATER BASE.dwg",
+      "stage": "hash",
+      "error": "[Errno 60] Operation timed out"
+    },
+    {
+      "path": "/System/Volumes/Data/Users/seanburdges/Library/CloudStorage/GoogleDrive-sburdges@gmail.com/My Drive/21053 - WATERLINE PTS CREATION.dwg",
+      "stage": "hash",
+      "error": "[Errno 60] Operation timed out"
+    },
+    {
+      "path": "/System/Volumes/Data/Users/seanburdges/Library/CloudStorage/GoogleDrive-sburdges@gmail.com/My Drive/21053 - EXPORT recieved 8-5-2022 for water line.dwg",
+      "stage": "hash",
+      "error": "[Errno 60] Operation timed out"
+    }
+  ],
+  "duration_seconds": 74.34
+}

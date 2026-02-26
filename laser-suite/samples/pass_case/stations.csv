@@ -1,0 +1,4 @@
+station_id,x,y,z,status
+A,0,0,0,fixed
+B,49,31,0,free
+C,100,0,0,fixed

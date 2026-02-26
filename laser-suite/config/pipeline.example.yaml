@@ -1,0 +1,23 @@
+schemaVersion: "1.0.0"
+laser:
+  adjustment:
+    max_iterations: 12
+    convergence_tol: 1.0e-6
+    condition_number_limit: 1.0e15
+    svd_rcond: 1.0e-12
+  rpp:
+    k95: 2.448
+    allowable_base_m: 0.02
+    allowable_ppm: 50.0
+encroachment:
+  snap_tolerance_m: 0.001
+  depth_method: "max_vertex_distance"
+contracts:
+  require_schema_version: true
+  require_relative_paths: true
+  deterministic_key_order: true
+civil3d:
+  queue:
+    max_items: 1000
+  notifications:
+    enable: true

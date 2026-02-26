@@ -1,0 +1,14 @@
+__pycache__/
+*.py[cod]
+.pytest_cache/
+artifacts/
+.DS_Store
+TOTL
+TOTL/
+data survey.zip
+validation/runs/
+validation/golden_results.json
+.claude/
+.cursor/
+.local-datasets/
+.qodo/

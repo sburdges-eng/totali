@@ -1,0 +1,189 @@
+{
+  "schemaVersion": "2.0.0",
+  "artifactType": "umbrella_project_manifest",
+  "invariants": [
+    {
+      "name": "paths_are_relative",
+      "passed": true,
+      "detail": "All project asset paths are relative to this repository root."
+    },
+    {
+      "name": "deterministic_key_order",
+      "passed": true,
+      "detail": "Top-level keys follow the canonical contract ordering."
+    },
+    {
+      "name": "typed_sections_only",
+      "passed": true,
+      "detail": "metadata/paths/data sections use explicit, typed structures only."
+    },
+    {
+      "name": "no_ambiguous_types",
+      "passed": true,
+      "detail": "Module categories and interfaces use fixed enumerations."
+    },
+    {
+      "name": "single_project_boundary",
+      "passed": true,
+      "detail": "All listed assets are governed as one integrated umbrella project."
+    }
+  ],
+  "metadata": {
+    "projectId": "groundtruthos-umbrella",
+    "projectName": "GroundTruthOS Umbrella Integration",
+    "owner": "seanburdges",
+    "status": "active",
+    "determinismMode": "strict",
+    "runtimeAiAllowed": false,
+    "generatedAtUtc": "2026-02-22T00:00:00Z"
+  },
+  "paths": {
+    "manifest": "config/umbrella_project_manifest.json",
+    "projectRoot": ".",
+    "assetRoot": ".."
+  },
+  "data": {
+    "modules": [
+      {
+        "id": "automaticcad_engine",
+        "category": "application",
+        "path": "../AUTOMATICCAD",
+        "role": "Primary CAD automation engine and geometry export orchestrator.",
+        "interfacesIn": [
+          "survey_qc_artifacts",
+          "dwg_parser_outputs",
+          "groundtruth_reference_data",
+          "freecad_runtime"
+        ],
+        "interfacesOut": [
+          "cad_automation_outputs",
+          "geometry_export_jobs"
+        ]
+      },
+      {
+        "id": "automotive_soundsystem",
+        "category": "application",
+        "path": "../automotive-soundsystem",
+        "role": "Domain subsystem integrated under umbrella governance.",
+        "interfacesIn": [
+          "groundtruth_reference_data"
+        ],
+        "interfacesOut": [
+          "domain_processing_outputs"
+        ]
+      },
+      {
+        "id": "bv_base_reference",
+        "category": "documentation",
+        "path": "../BV_BASE_data_reference_and_test_outcomes.md",
+        "role": "Canonical reference and expected outcomes baseline.",
+        "interfacesIn": [],
+        "interfacesOut": [
+          "validation_expectations"
+        ]
+      },
+      {
+        "id": "dwg_tool_parser_skill",
+        "category": "tooling",
+        "path": "../skills/dwg-tool-parser",
+        "role": "Deterministic DWG parsing and normalization helper skillset.",
+        "interfacesIn": [
+          "dwg_inputs"
+        ],
+        "interfacesOut": [
+          "dwg_parser_outputs"
+        ]
+      },
+      {
+        "id": "freecad_runtime_bundle",
+        "category": "binary",
+        "path": "../FreeCAD_1.0.2-conda-macOS-arm64-py311.dmg",
+        "role": "Pinned CAD runtime distribution package.",
+        "interfacesIn": [],
+        "interfacesOut": [
+          "freecad_runtime"
+        ]
+      },
+      {
+        "id": "freecad_runtime_checksum",
+        "category": "integrity",
+        "path": "../FreeCAD_1.0.2-conda-macOS-arm64-py311.dmg-SHA256.txt",
+        "role": "Integrity verification record for the pinned FreeCAD runtime bundle.",
+        "interfacesIn": [
+          "freecad_runtime"
+        ],
+        "interfacesOut": [
+          "runtime_integrity_status"
+        ]
+      },
+      {
+        "id": "groundtruthos_data",
+        "category": "dataset",
+        "path": "../groundtruthos-data",
+        "role": "Ground truth data foundation used by pipeline and CAD automation layers.",
+        "interfacesIn": [],
+        "interfacesOut": [
+          "groundtruth_reference_data"
+        ]
+      },
+      {
+        "id": "survey_automation_roadmap",
+        "category": "pipeline",
+        "path": ".",
+        "role": "Deterministic ingestion, QC, bridge, and arbitration control plane.",
+        "interfacesIn": [
+          "groundtruth_reference_data",
+          "validation_expectations",
+          "dwg_parser_outputs"
+        ],
+        "interfacesOut": [
+          "survey_qc_artifacts",
+          "arbitration_reports",
+          "bridge_artifacts"
+        ]
+      }
+    ],
+    "dependencyOrder": [
+      "freecad_runtime_bundle",
+      "freecad_runtime_checksum",
+      "groundtruthos_data",
+      "bv_base_reference",
+      "dwg_tool_parser_skill",
+      "survey_automation_roadmap",
+      "automaticcad_engine",
+      "automotive_soundsystem"
+    ],
+    "integrationFlows": [
+      {
+        "name": "deterministic_ingest_to_cad",
+        "from": "survey_automation_roadmap",
+        "to": "automaticcad_engine",
+        "contract": "survey_qc_artifacts"
+      },
+      {
+        "name": "dwg_normalization_flow",
+        "from": "dwg_tool_parser_skill",
+        "to": "survey_automation_roadmap",
+        "contract": "dwg_parser_outputs"
+      },
+      {
+        "name": "runtime_integrity_gate",
+        "from": "freecad_runtime_checksum",
+        "to": "automaticcad_engine",
+        "contract": "runtime_integrity_status"
+      },
+      {
+        "name": "reference_validation_flow",
+        "from": "bv_base_reference",
+        "to": "survey_automation_roadmap",
+        "contract": "validation_expectations"
+      }
+    ],
+    "governance": {
+      "canonicalContract": "schemaVersion,artifactType,invariants,metadata,paths,data",
+      "routingPolicy": "strict_fail_closed",
+      "arbitrationPolicy": "single_authority_hard_block",
+      "pathPolicy": "relative_only"
+    }
+  }
+}

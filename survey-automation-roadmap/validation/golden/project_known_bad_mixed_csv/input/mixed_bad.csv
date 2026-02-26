@@ -1,0 +1,8 @@
+Field Code,Layer,Symbol,Linework
+CP,PNTS,DOT1,YES
+,PNTS,DOT2,YES
+Point#,Northing,Easting,Elevation,Description,DWG Description,DWG Layer,Locked,Group,Category,LS Number
+1,100,200,300,CP START,CP START,PNTS,No,,Other,
+Point#,Northing,Easting,Elevation,Description,DWG Description,DWG Layer,Locked,Group,Category,LS Number
+1,100,200,300,CP START,CP START,PNTS,No,,Other,
+END OF EXPORT
