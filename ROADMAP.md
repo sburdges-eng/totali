@@ -30,8 +30,8 @@ and what remains.
 
 ## 1. Project Overview
 
-TOTaLi (TOTaLi-Assisted Drafting Pipeline) is a defensible spatial drafting
-system that combines:
+TOTaLi is a defensible spatial drafting system (the TOTaLi-Assisted Drafting
+Pipeline) that combines:
 
 - **LiDAR point-cloud processing** (classification, DTM, breaklines, contours)
 - **Geodetic adjustment** (WLS solver, RPP compliance, ALTA/NSPS standards)
