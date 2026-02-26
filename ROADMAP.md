@@ -261,13 +261,13 @@ CAD file discovery, deduplication, and curation for downstream automation.
 | CAD-logic tolerance mapping | ✅ Done | `references/cad-logic.md` |
 | Land survey domain rules | ✅ Done | `references/land-survey-civil.md` |
 | Agent config (OpenAI) | ✅ Done | `agents/openai.yaml` |
-| Parse script prototype | ⚠️ Partial | `scripts/parse_dwg.py` |
-| Topology degenerate-edge guard | ✅ Done | Zero-length edges are skipped during topology build (covered by `tests/test_dwg_parser.py`) |
+| Parse script prototype | ✅ Done | `scripts/parse_dwg.py` — dual-backend (ezdxf + ASCII fallback), hardened I/O |
+| Topology degenerate-edge guard | ✅ Done | Zero-length edges are skipped during topology build |
+| Production parser implementation | ✅ Done | 146 tests, binary-DXF guard, converter validation, timeout, file-size checks |
+| Topology graph extraction | ✅ Done | Nodes, edges, loops, adjacency, connected components, junction detection |
+| Civil-survey feature detection | ✅ Done | Parcels, centerlines, contours, spot elevations, utilities, control points |
+| Domain confidence scoring | ✅ Done | 6 survey domains scored with evidence trails |
 | **Remaining** | | |
-| Production parser implementation | ❌ Todo | Prototype only |
-| Topology graph extraction | ❌ Todo | Spec in SKILL.md |
-| Civil-survey feature detection | ❌ Todo | Rule templates defined |
-| Domain confidence scoring | ❌ Todo | Spec in SKILL.md |
 | Integration with survey-automation | ❌ Todo | Bridge not built |
 
 ---
@@ -280,6 +280,7 @@ CAD file discovery, deduplication, and curation for downstream automation.
 | Core pipeline integration tests | ❌ Todo | No end-to-end test |
 | Laser-suite unit tests | ✅ Done | 5 test files |
 | Laser-suite integration tests | ✅ Done | 4 test files |
+| DWG parser unit tests | ✅ Done | 146 tests in `tests/test_dwg_parser.py` |
 | Survey-automation unit tests | ✅ Done | 17+ test files |
 | Survey-automation integration tests | ✅ Done | 3 test files |
 | Cross-component integration | ❌ Todo | Pipeline ↔ laser-suite ↔ survey-auto |

@@ -830,7 +830,18 @@ def collect_ascii_sections(
 
 
 def parse_ascii_dxf(dxf_path: Path, sample_limit: int, precision: int) -> dict[str, Any]:
-    text = dxf_path.read_text(encoding="utf-8", errors="ignore")
+    file_size = dxf_path.stat().st_size
+    if file_size == 0:
+        raise ParseError("DXF file is empty or unreadable as ASCII text.")
+
+    raw_bytes = dxf_path.read_bytes()
+    if b"\x00" in raw_bytes[:256]:
+        raise ParseError(
+            "DXF file appears to be binary, not ASCII text. "
+            "Use an ezdxf-compatible backend or convert to ASCII DXF first."
+        )
+
+    text = raw_bytes.decode("utf-8", errors="ignore")
     pairs = pairs_from_dxf_text(text)
     if not pairs:
         raise ParseError("DXF file is empty or unreadable as ASCII text.")
@@ -2097,11 +2108,25 @@ def convert_dwg_to_dxf(
         output_path,
     )
 
-    completed = subprocess.run(
-        command_parts,
-        capture_output=True,
-        text=True,
-    )
+    executable = command_parts[0]
+    if not shutil.which(executable):
+        shutil.rmtree(temp_dir, ignore_errors=True)
+        raise ParseError(
+            f"Converter executable not found on PATH: {executable!r}. "
+            "Install the converter or provide the full path in the template."
+        )
+
+    try:
+        completed = subprocess.run(
+            command_parts,
+            capture_output=True,
+            text=True,
+            timeout=300,
+        )
+    except subprocess.TimeoutExpired:
+        shutil.rmtree(temp_dir, ignore_errors=True)
+        raise ParseError("Converter command timed out after 300 seconds.")
+
     if completed.returncode != 0:
         stderr = completed.stderr.strip() or "(no stderr)"
         raise ParseError(f"Converter command failed (exit {completed.returncode}): {stderr}")
@@ -2124,6 +2149,12 @@ def parse_input(
     temp_dir: Path | None = None
     conversion_info: dict[str, Any] = {"used": False}
     dxf_path = input_path
+
+    if not input_path.is_file():
+        raise ParseError(f"Input path is not a file or does not exist: {input_path}")
+
+    if input_path.stat().st_size == 0:
+        raise ParseError("Input file is empty (0 bytes).")
 
     if suffix == ".dwg":
         if not converter_template:
