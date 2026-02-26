@@ -11,6 +11,8 @@ from datetime import datetime, timezone
 from pathlib import Path
 from typing import Optional
 
+import numpy as np
+
 from totali.pipeline.models import (
     PhaseResult, GeometryStatus, LintItem, OcclusionType
 )
@@ -115,7 +117,7 @@ class SurveyorLinter(PipelinePhase):
             for zone in extraction.occlusion_zones:
                 if zone is None or len(zone) == 0:
                     continue
-                if getattr(zone, "ndim", 0) < 2 or zone.shape[1] < 2:
+                if not isinstance(zone, np.ndarray) or zone.ndim < 2 or zone.shape[1] < 2:
                     continue
                 z = zone[:, :2]
                 zx0, zy0 = z.min(axis=0)
