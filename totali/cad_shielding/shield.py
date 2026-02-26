@@ -333,7 +333,12 @@ class CADShield(PipelinePhase):
         """Create an entity record for the manifest / audit trail."""
         geo_bytes = geometry.tobytes() if isinstance(geometry, np.ndarray) else str(geometry).encode()
         bbox = None
-        if isinstance(geometry, np.ndarray) and geometry.size > 0 and geometry.ndim >= 2:
+        if (
+            isinstance(geometry, np.ndarray)
+            and geometry.size > 0
+            and geometry.ndim >= 2
+            and geometry.shape[1] >= 2
+        ):
             mins = np.min(geometry[:, :2], axis=0)
             maxs = np.max(geometry[:, :2], axis=0)
             bbox = [float(mins[0]), float(mins[1]), float(maxs[0]), float(maxs[1])]

@@ -115,6 +115,8 @@ class SurveyorLinter(PipelinePhase):
             for zone in extraction.occlusion_zones:
                 if zone is None or len(zone) == 0:
                     continue
+                if getattr(zone, "ndim", 0) < 2 or zone.shape[1] < 2:
+                    continue
                 z = zone[:, :2]
                 zx0, zy0 = z.min(axis=0)
                 zx1, zy1 = z.max(axis=0)
