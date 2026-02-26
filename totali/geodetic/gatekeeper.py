@@ -187,6 +187,10 @@ class GeodeticGatekeeper(PipelinePhase):
     ) -> tuple[np.ndarray, bool]:
         xyz = np.column_stack([las.x, las.y, las.z])
 
+        # If EPSG code is unknown/missing, no transform can be applied
+        if not crs.epsg_code:
+            return xyz, False
+
         # If CRS matches first allowed CRS, no transform needed
         if crs.epsg_code == self.allowed_epsg[0]:
             return xyz, False
