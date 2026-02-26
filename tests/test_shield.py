@@ -142,6 +142,19 @@ class TestDXFWriting:
         content = out_path.read_text()
         assert "EOF" in content
 
+    def test_manual_fallback_line_bbox_is_per_segment(self, shield, tmp_path):
+        out_path = tmp_path / "test.dxf"
+        extraction = ExtractionResult(
+            breaklines=[np.array([[0.0, 0.0, 10.0], [10.0, 0.0, 11.0], [10.0, 5.0, 12.0]])]
+        )
+        manifest = shield._write_dxf_manual(extraction, out_path)
+        line_entities = [e for e in manifest["entities"] if e["type"] == "LINE"]
+        assert all(len(e["bbox"]) == 4 for e in line_entities)
+        assert [e["bbox"] for e in line_entities] == [
+            [0.0, 0.0, 10.0, 0.0],
+            [10.0, 0.0, 10.0, 5.0],
+        ]
+
 
 class TestPhaseRun:
     @patch("totali.cad_shielding.shield.CADShield._write_dxf")

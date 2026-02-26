@@ -310,7 +310,7 @@ class CADShield(PipelinePhase):
                     "10", str(p0[0]), "20", str(p0[1]), "30", str(p0[2]),
                     "11", str(p1[0]), "21", str(p1[1]), "31", str(p1[2]),
                 ])
-                entities.append(self._entity_record(entity_id, "LINE", layer, brk))
+                entities.append(self._entity_record(entity_id, "LINE", layer, np.vstack([p0, p1])))
 
         lines.extend(["0", "ENDSEC", "0", "EOF"])
 
