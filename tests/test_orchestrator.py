@@ -27,7 +27,7 @@ class TestInitialization:
             assert phase_name in orchestrator.phases
 
     def test_phase_order_constant(self):
-        assert PHASE_ORDER == ["geodetic", "segment", "extract", "shield", "lint"]
+        assert PHASE_ORDER == ["geodetic", "segment", "extract", "integration", "shield", "lint"]
 
 
 class TestSinglePhaseExecution:

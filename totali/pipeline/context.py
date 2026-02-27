@@ -17,6 +17,7 @@ from totali.pipeline.models import (
     HealingReport,
     LintItem,
     PointCloudStats,
+    SurveyData,
 )
 
 
@@ -42,6 +43,7 @@ class PipelineConfig(BaseModel):
     extraction: dict[str, Any] = Field(default_factory=dict)
     cad_shielding: dict[str, Any] = Field(default_factory=dict)
     linting: dict[str, Any] = Field(default_factory=dict)
+    integration: dict[str, Any] = Field(default_factory=dict)
     audit: AuditConfig = Field(default_factory=AuditConfig)
 
 
@@ -58,6 +60,7 @@ class PipelineContext(BaseModel):
     input_hash: str | None = None
     classification: ClassificationResult | None = None
     extraction: ExtractionResult | None = None
+    survey_data: SurveyData | None = None
     dxf_path: str | None = None
     manifest: dict[str, Any] | None = None
     healing: HealingReport | None = None

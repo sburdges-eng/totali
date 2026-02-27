@@ -4,6 +4,7 @@ Pipeline Data Models
 Shared types across all pipeline phases.
 """
 
+from __future__ import annotations
 from dataclasses import dataclass, field
 from enum import Enum
 from pathlib import Path
@@ -99,6 +100,25 @@ class PhaseResult:
     data: dict = field(default_factory=dict)
     output_files: list = field(default_factory=list)
 
+@dataclass
+class SurveyFeature:
+    """A geometry feature imported from survey automation or laser suite."""
+    feature_id: str
+    feature_code: str
+    feature_type: str  # "Point", "LineString", "Polygon"
+    geometry: np.ndarray  # Nx3 array
+    attributes: dict = field(default_factory=dict)
+    source_layer: Optional[str] = None
+
+
+@dataclass
+class SurveyData:
+    """Container for imported survey and control data."""
+    features: list[SurveyFeature] = field(default_factory=list)
+    control_points: list[SurveyFeature] = field(default_factory=list)
+    source_files: list[str] = field(default_factory=list)
+    coordinate_system: Optional[str] = None
+
 
 @dataclass
 class PipelineResult:
@@ -111,6 +131,7 @@ class PipelineResult:
     classification: Optional[ClassificationResult] = None
     extraction: Optional[ExtractionResult] = None
     healing: Optional[HealingReport] = None
+    survey_data: Optional[SurveyData] = None
 
 
 @dataclass
