@@ -570,7 +570,13 @@ def _write_points_parquet(path: Path, points: list[Any]) -> tuple[bool, str]:
         table = table.select(columns)
         pq.write_table(table, path)
         return True, ""
-    except Exception as exc:  # pragma: no cover - exercised by environment differences
+    except Exception as exc:
+        # Cleanup potentially partial file if it exists
+        if path.exists():
+            try:
+                path.unlink()
+            except Exception:
+                pass
         return False, str(exc)
 
 
@@ -722,7 +728,7 @@ def run_pipeline(
                 else:
                     if not converter_command:
                         if crd_mode == "converter_required" and fail_on_converter_error:
-                            raise RuntimeError("Binary CRD requires `crd.converter_command` in converter_required mode")
+                            raise RuntimeError("Binary CRD requires  in converter_required mode")
                         record.status = "quarantined"
                         quarantined_files.append(
                             QuarantinedFile(
