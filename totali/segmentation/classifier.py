@@ -3,6 +3,7 @@ Phase 2: Discriminative ML Segmentation
 ========================================
 Non-authoritative classification. Produces probabilities + confidence, NOT geometry.
 Uses ONNX runtime for model inference on point cloud batches.
+Also supports GNN-based classification via the unified GNN module.
 """
 
 import time
@@ -15,6 +16,17 @@ from totali.pipeline.models import PhaseResult, ClassificationResult
 from totali.pipeline.base_phase import PipelinePhase
 from totali.pipeline.context import PipelineContext
 from totali.audit.logger import AuditLogger
+
+# Optional GNN imports
+try:
+    from totali.gnn.config import GNNConfig
+    from totali.gnn.loader import UnifiedLoader
+    from totali.gnn.graph_builder import GraphBuilder
+    from totali.gnn.model import GraphNeuralNetwork
+    from totali.gnn.graph_types import NodeFeatures
+    GNN_AVAILABLE = True
+except ImportError:
+    GNN_AVAILABLE = False
 
 
 class PointCloudClassifier(PipelinePhase):
@@ -35,6 +47,7 @@ class PointCloudClassifier(PipelinePhase):
         self.batch_size = config.get("batch_size", 65536)
         self.voxel_size = config.get("voxel_size", 0.05)
         self.classes = config.get("classes", {})
+        self.use_gnn = config.get("use_gnn", False)
         self.session = None
 
     def validate_inputs(self, context: PipelineContext) -> tuple[bool, list[str]]:
@@ -56,8 +69,7 @@ class PointCloudClassifier(PipelinePhase):
 
         try:
             import onnxruntime as ort
-            providers = ["CUDAExecutionProvider", "CPUExecutionProvider"] \
-                if self.device == "cuda" else ["CPUExecutionProvider"]
+            providers = ["CUDAExecutionProvider", "CPUExecutionProvider"]                 if self.device == "cuda" else ["CPUExecutionProvider"]
             self.session = ort.InferenceSession(str(model_file), providers=providers)
             return True
         except ImportError:
@@ -79,15 +91,22 @@ class PointCloudClassifier(PipelinePhase):
             "point_count": n_points,
             "model": self.model_path,
             "device": self.device,
+            "use_gnn": self.use_gnn
         })
 
-        # Try ML model, fall back to rule-based
-        model_loaded = self._load_model()
-
-        if model_loaded and self.session is not None:
-            result = self._classify_ml(points_xyz, las)
+        # Branch for GNN or Standard ML
+        if self.use_gnn and GNN_AVAILABLE:
+            result = self._classify_gnn(points_xyz, las)
+            method_used = "gnn"
         else:
-            result = self._classify_rules(points_xyz, las)
+            # Try ML model, fall back to rule-based
+            model_loaded = self._load_model()
+            if model_loaded and self.session is not None:
+                result = self._classify_ml(points_xyz, las)
+                method_used = "ml"
+            else:
+                result = self._classify_rules(points_xyz, las)
+                method_used = "rule_based"
 
         # Detect occlusion zones
         result.occlusion_mask = self._detect_occlusions(points_xyz, result)
@@ -104,7 +123,7 @@ class PointCloudClassifier(PipelinePhase):
         }
 
         self.audit.log("classify", {
-            "method": "ml" if model_loaded else "rule_based",
+            "method": method_used,
             "mean_confidence": round(result.mean_confidence, 4),
             "low_confidence_points": result.low_confidence_count,
             "occluded_points": result.occluded_count,
@@ -124,6 +143,81 @@ class PointCloudClassifier(PipelinePhase):
                 "input_hash": context.input_hash,
             },
         )
+
+    def _classify_gnn(self, xyz: np.ndarray, las) -> ClassificationResult:
+        """
+        Run classification using the Graph Neural Network module.
+        Constructs a graph from the points and propagates labels.
+        """
+        try:
+            # Initialize GNN components
+            gnn_config = GNNConfig(
+                knn_k=10,
+                radius_search=0.0,
+                hidden_dim=32
+            )
+
+            # Loader - populate with current points
+            loader = UnifiedLoader(gnn_config)
+
+            # Add points from context directly to graph
+            # This can be slow for millions of points in Python loop
+            # For prototype we do a subset or simple loop
+            limit = 5000 # Limit for GNN prototype stability
+
+            n_points = len(xyz)
+            step = max(1, n_points // limit)
+            indices = range(0, n_points, step)
+
+            subset_xyz = xyz[indices]
+
+            for i, idx in enumerate(indices):
+                # Extract basic features from las if available
+                r = int(las.red[idx]) if hasattr(las, 'red') else 0
+                g = int(las.green[idx]) if hasattr(las, 'green') else 0
+                b = int(las.blue[idx]) if hasattr(las, 'blue') else 0
+                intensity = int(las.intensity[idx]) if hasattr(las, 'intensity') else 0
+
+                # Check for existing classification if we want to refine it
+                cls = int(las.classification[idx]) if hasattr(las, 'classification') else 0
+
+                loader.graph.nodes.append(NodeFeatures(
+                    x=xyz[idx, 0], y=xyz[idx, 1], z=xyz[idx, 2],
+                    r=r, g=g, b=b, intensity=intensity,
+                    classification=cls,
+                    source_format='las_context'
+                ))
+
+            # Build Graph Edges
+            builder = GraphBuilder(gnn_config)
+            builder.build_edges(loader.graph)
+            builder.finalize_graph(loader.graph)
+
+            # Run GNN
+            model = GraphNeuralNetwork(gnn_config)
+            # In a real scenario, we would load weights here
+            # model.load_weights(...)
+
+            probs = model.forward(loader.graph.x_features, loader.graph.edge_index)
+            # probs is (subset_size, num_classes)
+
+            subset_labels = np.argmax(probs, axis=1)
+            subset_confs = np.max(probs, axis=1)
+
+            # Interpolate back to full cloud (Nearest Neighbor)
+            # KDTree for interpolation
+            from scipy.spatial import KDTree
+            tree = KDTree(subset_xyz)
+            dists, nn_indices = tree.query(xyz, k=1)
+
+            full_labels = subset_labels[nn_indices]
+            full_confs = subset_confs[nn_indices]
+
+            return ClassificationResult(labels=full_labels.astype(np.int32), confidences=full_confs.astype(np.float32))
+
+        except Exception as e:
+            self.audit.log("classify", {"error": f"GNN classification failed: {e}, falling back to rules"})
+            return self._classify_rules(xyz, las)
 
     def _classify_ml(self, xyz: np.ndarray, las) -> ClassificationResult:
         """Run ONNX model inference in batches."""

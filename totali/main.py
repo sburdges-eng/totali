@@ -4,6 +4,7 @@ TOTaLi Drafting Pipeline – Main Entry Point
 Usage:
     python -m totali.main --input pointcloud.las --config config/pipeline.yaml
     python -m totali.main --input pointcloud.las --phase geodetic
+    python -m totali.main --input pointcloud.las --phase segment --use-gnn
 """
 
 import click
@@ -29,12 +30,21 @@ from totali.audit.logger import AuditLogger
               help="Output directory")
 @click.option("--project-id", default=None, help="Project identifier for audit trail")
 @click.option("--dry-run", is_flag=True, help="Validate config and inputs without processing")
-def main(input_path, config_path, phase, output_dir, project_id, dry_run):
+@click.option("--use-gnn", is_flag=True, help="Enable GNN-based classification for segment phase")
+def main(input_path, config_path, phase, output_dir, project_id, dry_run, use_gnn):
     """TOTaLi-Assisted Drafting Pipeline"""
 
     # Load config
     with open(config_path, "r") as f:
-        config = PipelineConfig.model_validate(yaml.safe_load(f))
+        config_dict = yaml.safe_load(f)
+
+    # Apply CLI overrides
+    if use_gnn:
+        if "segmentation" not in config_dict:
+            config_dict["segmentation"] = {}
+        config_dict["segmentation"]["use_gnn"] = True
+
+    config = PipelineConfig.model_validate(config_dict)
 
     # Setup
     output_path = Path(output_dir)
@@ -55,12 +65,14 @@ def main(input_path, config_path, phase, output_dir, project_id, dry_run):
         "phase": phase,
         "project_id": project_id,
         "dry_run": dry_run,
+        "use_gnn": use_gnn
     })
 
     if dry_run:
         click.echo(f"[DRY RUN] Config valid. Input: {input_path}")
         click.echo(f"[DRY RUN] Project ID: {project_id}")
         click.echo(f"[DRY RUN] Phase: {phase}")
+        click.echo(f"[DRY RUN] GNN Enabled: {use_gnn}")
         audit.log("dry_run_complete", {"status": "ok"})
         return
 
