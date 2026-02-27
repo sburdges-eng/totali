@@ -2,7 +2,7 @@
 
 import json
 from pathlib import Path
-from unittest.mock import patch
+from unittest.mock import patch, Mock
 
 import numpy as np
 import pytest
@@ -196,3 +196,53 @@ class TestPhaseRun:
         manifest = result.data["manifest"]
         for entity in manifest.get("entities", []):
             assert entity["status"] == "DRAFT"
+
+
+class TestSafeAddEntity:
+    def test_safe_add_entity_success(self, shield):
+        entities = []
+        add_func = Mock()
+        geo = np.array([0, 0, 0])
+
+        shield._safe_add_entity(
+            entities,
+            add_func,
+            (1, 2, 3),
+            layer="TEST-LAYER",
+            entity_type="TEST",
+            geometry=geo
+        )
+
+        # Verify function was called correctly
+        add_func.assert_called_once()
+        args, kwargs = add_func.call_args
+        assert args[0] == (1, 2, 3)
+        assert kwargs["dxfattribs"]["layer"] == "TEST-LAYER"
+
+        # Verify entity was added to list
+        assert len(entities) == 1
+        assert entities[0]["layer"] == "TEST-LAYER"
+        assert entities[0]["type"] == "TEST"
+
+    def test_safe_add_entity_logs_failure(self, shield):
+        entities = []
+        add_func = Mock(side_effect=ValueError("Test Error"))
+        geo = np.array([0, 0, 0])
+
+        shield._safe_add_entity(
+            entities,
+            add_func,
+            (1, 2, 3),
+            layer="TEST-LAYER",
+            entity_type="TEST",
+            geometry=geo
+        )
+
+        # Verify entity was NOT added
+        assert len(entities) == 0
+
+        # Verify audit log captured the failure
+        events = shield.audit.get_events("insert_failure")
+        assert len(events) == 1
+        assert events[0]["data"]["layer"] == "TEST-LAYER"
+        assert events[0]["data"]["error"] == "Test Error"
