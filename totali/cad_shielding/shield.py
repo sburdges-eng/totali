@@ -102,17 +102,20 @@ class CADShield(PipelinePhase):
 
         # Check DTM faces
         if extraction.dtm_faces is not None:
-            report.input_entity_count += len(extraction.dtm_faces)
-            for i, face in enumerate(extraction.dtm_faces):
-                verts = extraction.dtm_vertices[face]
-                area = 0.5 * np.linalg.norm(
-                    np.cross(verts[1] - verts[0], verts[2] - verts[0])
-                )
-                if area < degen_tol:
-                    report.quarantined_count += 1
-                    report.issues.append(f"Degenerate DTM face {i}: area={area:.8f}")
-                else:
-                    report.passed_count += 1
+            dtm_faces = extraction.dtm_faces
+            report.input_entity_count += len(dtm_faces)
+            if len(dtm_faces) > 0:
+                triangles = extraction.dtm_vertices[dtm_faces]
+                vectors_a = triangles[:, 1] - triangles[:, 0]
+                vectors_b = triangles[:, 2] - triangles[:, 0]
+                areas = 0.5 * np.linalg.norm(np.cross(vectors_a, vectors_b), axis=1)
+
+                degenerate_mask = areas < degen_tol
+                report.quarantined_count += int(np.sum(degenerate_mask))
+                report.passed_count += int(len(areas) - np.sum(degenerate_mask))
+
+                for idx in np.where(degenerate_mask)[0]:
+                    report.issues.append(f"Degenerate DTM face {int(idx)}: area={areas[idx]:.8f}")
 
         # Check polylines (breaklines, contours, curbs, wires)
         polyline_sets = [
