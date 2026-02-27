@@ -7,6 +7,7 @@ Rejects ambiguous inputs. Applies PROJ-based transformations.
 
 import hashlib
 import json
+import csv
 from pathlib import Path
 from typing import Optional
 
@@ -48,32 +49,57 @@ class GeodeticGatekeeper(PipelinePhase):
         input_path = Path(context.input_path)
         output_dir = Path(context.output_dir)
 
-        # Read point cloud
-        las = laspy.read(str(input_path))
-
-        # Extract and validate CRS
-        crs_meta = self._extract_crs(las, input_path)
+        # Handle CSV input
+        if input_path.suffix.lower() == ".csv":
+            las = self._read_csv_as_las(input_path)
+            crs_meta = self._extract_crs_from_csv(input_path)
+        else:
+            # Read point cloud (LAS/LAZ)
+            las = laspy.read(str(input_path))
+            # Extract and validate CRS
+            crs_meta = self._extract_crs(las, input_path)
 
         if not crs_meta.is_valid:
-            return PhaseResult(
-                phase="geodetic",
-                success=False,
-                message=f"CRS validation failed: {crs_meta.validation_errors}",
-            )
+            # If CSV and reject_on_missing_crs is False, we might allow it if we have upstream metadata
+            # For now, strict validation logic remains
+            if not (input_path.suffix.lower() == ".csv" and not self.reject_missing_crs):
+                 return PhaseResult(
+                    phase="geodetic",
+                    success=False,
+                    message=f"CRS validation failed: {crs_meta.validation_errors}",
+                )
 
         # Compute stats
         stats = self._compute_stats(las, input_path, crs_meta)
 
         # Hash input for chain of custody
         input_hash = self._hash_file(input_path)
-        self.audit.log("ingest", {
+
+        # Determine upstream linkage
+        upstream_run_id = None
+        if input_path.suffix.lower() == ".csv":
+             # Look for run_manifest.json in ../manifest/
+             manifest_path = input_path.parent.parent / "manifest" / "run_manifest.json"
+             if manifest_path.exists():
+                 try:
+                     with open(manifest_path, "r") as f:
+                         manifest = json.load(f)
+                         upstream_run_id = manifest.get("metadata", {}).get("run_id")
+                 except Exception:
+                     pass
+
+        audit_payload = {
             "file": str(input_path),
             "sha256": input_hash,
             "point_count": stats.point_count,
-            "crs": f"EPSG:{crs_meta.epsg_code}",
+            "crs": f"EPSG:{crs_meta.epsg_code}" if crs_meta.epsg_code else "unknown",
             "bounds_min": stats.bounds_min.tolist() if stats.bounds_min is not None else None,
             "bounds_max": stats.bounds_max.tolist() if stats.bounds_max is not None else None,
-        })
+        }
+        if upstream_run_id:
+            audit_payload["upstream_run_id"] = upstream_run_id
+
+        self.audit.log("ingest", audit_payload)
 
         # Transform if needed
         points_xyz, transform_applied = self._apply_transforms(las, crs_meta)
@@ -125,6 +151,69 @@ class GeodeticGatekeeper(PipelinePhase):
             },
             output_files=[out_path, report_path],
         )
+
+    def _read_csv_as_las(self, path: Path) -> laspy.LasData:
+        """Read survey-automation style CSV and convert to LasData."""
+        points = []
+        with open(path, "r", encoding="utf-8-sig") as f:
+            reader = csv.DictReader(f)
+            # Normalize field names (strip whitespace, lowercase)
+            if reader.fieldnames:
+                reader.fieldnames = [fn.strip().lower() for fn in reader.fieldnames]
+
+            for row in reader:
+                try:
+                    x = float(row.get("easting", 0))
+                    y = float(row.get("northing", 0))
+                    z = float(row.get("elevation", 0))
+                    points.append((x, y, z))
+                except ValueError:
+                    continue  # Skip malformed rows
+
+        if not points:
+            raise ValueError(f"No valid points found in CSV: {path}")
+
+        points_np = np.array(points)
+
+        # Create minimal LAS structure
+        header = laspy.LasHeader(point_format=3, version="1.4")
+        header.offsets = points_np.min(axis=0)
+        header.scales = [0.001, 0.001, 0.001]
+
+        las = laspy.LasData(header)
+        las.x = points_np[:, 0]
+        las.y = points_np[:, 1]
+        las.z = points_np[:, 2]
+
+        return las
+
+    def _extract_crs_from_csv(self, path: Path) -> CRSMetadata:
+        """Attempt to extract CRS from sidecar manifest or rely on config override."""
+        # For now, we return empty/invalid metadata unless configured to ignore
+        # In a real impl, we'd check manifest/run_manifest.json for CRS hints
+        meta = CRSMetadata(epsg_code=0)
+        errors = []
+
+        if self.reject_missing_crs:
+             # Try to find a default/fallback if provided in config, else error
+             if self.allowed_epsg:
+                 # Auto-assume the first allowed CRS for CSV inputs if strict checking is off
+                 # But strict is ON by default.
+                 # Logic: if CSV has no metadata, we can't invent it safely.
+                 errors.append("CSV input requires external CRS definition (not yet implemented)")
+             else:
+                 errors.append("No CRS metadata found in CSV context")
+
+        # If config allows missing CRS, we'll mark as valid but with code=0
+        if not self.reject_missing_crs:
+            meta.is_valid = True
+            if self.allowed_epsg:
+                meta.epsg_code = self.allowed_epsg[0] # Default to project CRS
+        else:
+            meta.validation_errors = errors
+            meta.is_valid = len(errors) == 0
+
+        return meta
 
     def _extract_crs(self, las: laspy.LasData, path: Path) -> CRSMetadata:
         meta = CRSMetadata(epsg_code=0)

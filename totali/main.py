@@ -3,7 +3,7 @@ TOTaLi Drafting Pipeline – Main Entry Point
 =============================================
 Usage:
     python -m totali.main --input pointcloud.las --config config/pipeline.yaml
-    python -m totali.main --input pointcloud.las --phase geodetic
+    python -m totali.main --input points.csv --phase geodetic
 """
 
 import click
@@ -19,7 +19,7 @@ from totali.audit.logger import AuditLogger
 
 @click.command()
 @click.option("--input", "input_path", required=True, type=click.Path(exists=True),
-              help="Input point cloud file (.las/.laz/.copc.laz)")
+              help="Input point cloud file (.las/.laz/.copc.laz) or points CSV (.csv)")
 @click.option("--config", "config_path", default="config/pipeline.yaml",
               type=click.Path(exists=True), help="Pipeline config YAML")
 @click.option("--phase", type=click.Choice(

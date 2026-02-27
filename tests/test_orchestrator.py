@@ -10,7 +10,7 @@ from totali.pipeline.orchestrator import PipelineOrchestrator, PHASE_ORDER
 from totali.pipeline.context import PipelineConfig, PipelineContext
 from totali.pipeline.models import PhaseResult, PipelineResult
 from totali.audit.logger import AuditLogger
-
+from tests.conftest import _FakeLasData
 
 @pytest.fixture
 def orchestrator(audit_logger, sample_config, tmp_output):
@@ -31,17 +31,23 @@ class TestInitialization:
 
 
 class TestSinglePhaseExecution:
-    def test_run_single_phase_only(self, orchestrator, tmp_path):
+    @patch("laspy.read")
+    def test_run_single_phase_only(self, mock_read, orchestrator, tmp_path):
         fake_las = tmp_path / "input.las"
         fake_las.write_bytes(b"\x00" * 100)
+        mock_read.return_value = _FakeLasData()
+
         result = orchestrator.run(str(fake_las), phase="geodetic")
         assert isinstance(result, PipelineResult)
         assert len(result.phases) == 1
         assert result.phases[0].phase == "geodetic"
 
-    def test_run_all_phases(self, orchestrator, tmp_path):
+    @patch("laspy.read")
+    def test_run_all_phases(self, mock_read, orchestrator, tmp_path):
         fake_las = tmp_path / "input.las"
         fake_las.write_bytes(b"\x00" * 100)
+        mock_read.return_value = _FakeLasData()
+
         result = orchestrator.run(str(fake_las), phase="all")
         assert isinstance(result, PipelineResult)
         # May stop early on validation failure, but should run at least one phase
@@ -69,10 +75,12 @@ class TestContextPassing:
 
 
 class TestErrorHandling:
-    def test_validation_failure_stops_pipeline(self, orchestrator, tmp_path):
+    @patch("laspy.read")
+    def test_validation_failure_stops_pipeline(self, mock_read, orchestrator, tmp_path):
         """If a phase's validate_inputs fails, pipeline should stop."""
         fake_las = tmp_path / "input.las"
         fake_las.write_bytes(b"\x00" * 100)
+        mock_read.return_value = _FakeLasData()
 
         # Run all phases — the classifier should fail validation if geodetic
         # didn't produce points_xyz (due to CRS failure in stub environment)
@@ -108,27 +116,36 @@ class TestErrorHandling:
 
 
 class TestPipelineResult:
-    def test_result_has_project_id(self, orchestrator, tmp_path):
+    @patch("laspy.read")
+    def test_result_has_project_id(self, mock_read, orchestrator, tmp_path):
         fake_las = tmp_path / "input.las"
         fake_las.write_bytes(b"\x00" * 100)
+        mock_read.return_value = _FakeLasData()
+
         result = orchestrator.run(str(fake_las), phase="geodetic")
         assert result.project_id == "test_project"
 
-    def test_result_tracks_duration(self, orchestrator, tmp_path):
+    @patch("laspy.read")
+    def test_result_tracks_duration(self, mock_read, orchestrator, tmp_path):
         fake_las = tmp_path / "input.las"
         fake_las.write_bytes(b"\x00" * 100)
+        mock_read.return_value = _FakeLasData()
+
         result = orchestrator.run(str(fake_las), phase="geodetic")
         assert result.duration_sec >= 0
 
 
 class TestAuditIntegration:
-    def test_phase_start_logged(self, tmp_path, sample_config):
+    @patch("laspy.read")
+    def test_phase_start_logged(self, mock_read, tmp_path, sample_config):
         audit = AuditLogger(log_dir=str(tmp_path / "audit"), project_id="test")
         orch = PipelineOrchestrator(sample_config, audit, tmp_path / "out")
         (tmp_path / "out").mkdir()
 
         fake_las = tmp_path / "input.las"
         fake_las.write_bytes(b"\x00" * 100)
+        mock_read.return_value = _FakeLasData()
+
         orch.run(str(fake_las), phase="geodetic")
 
         events = audit.get_events("phase_start")
