@@ -232,3 +232,93 @@ def get_lineage(conn_string: str, surface_id: str) -> list[dict]:
     lineage = [dict(zip(columns, row)) for row in rows]
     logger.info("Lineage for surface %s: %d rows", surface_id, len(lineage))
     return lineage
+
+def link_surface_telemetry(
+    conn_string: str,
+    surface_id: str,
+    zone_id: str,
+) -> None:
+    """Link a surface to a telemetry zone in the knowledge graph.
+
+    Args:
+        conn_string: PostgreSQL connection string.
+        surface_id: UUID of the surface.
+        zone_id: UUID of the telemetry zone.
+    """
+    conn = psycopg2.connect(conn_string)
+    try:
+        with conn.cursor() as cur:
+            cur.execute(
+                """
+                INSERT INTO surface_telemetry_link (surface_id, zone_id)
+                VALUES (%s, %s)
+                ON CONFLICT (surface_id, zone_id) DO NOTHING
+                """,
+                (surface_id, zone_id),
+            )
+        conn.commit()
+    except Exception:
+        conn.rollback()
+        raise
+    finally:
+        conn.close()
+
+    logger.info("Linked surface %s to telemetry zone %s", surface_id, zone_id)
+
+
+def register_outcome(
+    conn_string: str,
+    zone_id: str,
+    metric_name: str,
+    predicted_value: float | None = None,
+    measured_value: float | None = None,
+    variance: float | None = None,
+    measured_at: str | None = None,
+    metadata: dict | None = None,
+) -> str:
+    """Register an outcome variance record linked to a telemetry zone.
+
+    Args:
+        conn_string: PostgreSQL connection string.
+        zone_id: UUID of the telemetry zone.
+        metric_name: Name of the metric (e.g., 'compaction', 'grade').
+        predicted_value: The planned or predicted value.
+        measured_value: The actual measured value.
+        variance: The difference (measured - predicted).
+        measured_at: ISO timestamp of measurement.
+        metadata: Arbitrary metadata.
+
+    Returns:
+        UUID of the inserted outcome record.
+    """
+    conn = psycopg2.connect(conn_string)
+    try:
+        with conn.cursor() as cur:
+            cur.execute(
+                """
+                INSERT INTO outcome_variance
+                    (zone_id, metric_name, predicted_value, measured_value,
+                     variance, measured_at, metadata)
+                VALUES (%s, %s, %s, %s, %s, %s, %s)
+                RETURNING id
+                """,
+                (
+                    zone_id,
+                    metric_name,
+                    predicted_value,
+                    measured_value,
+                    variance,
+                    measured_at,
+                    Json(metadata or {}),
+                ),
+            )
+            outcome_id = cur.fetchone()[0]
+        conn.commit()
+    except Exception:
+        conn.rollback()
+        raise
+    finally:
+        conn.close()
+
+    logger.info("Registered outcome %s for zone %s", outcome_id, zone_id)
+    return str(outcome_id)
