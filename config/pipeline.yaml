@@ -114,3 +114,8 @@ audit:
     - "reject"
     - "promote"
     - "certify"
+
+# Phase Integration: Survey & Control Loader
+integration:
+  geometry_ir_path: "survey-automation-roadmap/validation/eval/geometry_ir.json"
+  control_csv_path: "laser-suite/run-20260226/laser/stations_adjusted.csv"

@@ -15,7 +15,7 @@ from typing import Optional
 import numpy as np
 
 from totali.pipeline.models import (
-    PhaseResult, ExtractionResult, HealingReport, GeometryStatus
+    PhaseResult, ExtractionResult, HealingReport, GeometryStatus, SurveyData
 )
 from totali.pipeline.base_phase import PipelinePhase
 from totali.pipeline.context import PipelineContext
@@ -59,7 +59,7 @@ class CADShield(PipelinePhase):
 
         # Write to DXF
         dxf_path = output_dir / "totali_draft_output.dxf"
-        entity_manifest = self._write_dxf(extraction, dxf_path)
+        entity_manifest = self._write_dxf(context, dxf_path)
 
         # Write entity manifest (chain of custody)
         manifest_path = output_dir / "entity_manifest.json"
@@ -164,17 +164,20 @@ class CADShield(PipelinePhase):
 
         return report
 
-    def _write_dxf(self, extraction: ExtractionResult, path: Path) -> dict:
+    def _write_dxf(self, context: PipelineContext, path: Path) -> dict:
         """Write extraction results to DXF with proper layer mapping."""
         try:
             import ezdxf
-            return self._write_dxf_ezdxf(extraction, path)
+            return self._write_dxf_ezdxf(context, path)
         except ImportError:
-            return self._write_dxf_manual(extraction, path)
+            return self._write_dxf_manual(context, path)
 
-    def _write_dxf_ezdxf(self, extraction: ExtractionResult, path: Path) -> dict:
+    def _write_dxf_ezdxf(self, context: PipelineContext, path: Path) -> dict:
         """Write DXF using ezdxf library."""
         import ezdxf
+
+        extraction = context.extraction
+        survey_data = context.survey_data
 
         doc = ezdxf.new("R2018")
         msp = doc.modelspace()
@@ -281,6 +284,34 @@ class CADShield(PipelinePhase):
             except Exception:
                 pass
 
+        # Survey Data Features
+        if survey_data:
+            for feat in survey_data.features:
+                layer = feat.source_layer or f"TOTaLi-SURV-{feat.feature_code.upper()}-DRAFT"
+                try:
+                    if feat.feature_type == "Point":
+                        msp.add_point(tuple(feat.geometry[0]), dxfattribs={"layer": layer})
+                        entities.append(self._entity_record(feat.feature_id, "POINT", layer, feat.geometry))
+                    elif feat.feature_type == "LineString":
+                         msp.add_polyline3d([tuple(p) for p in feat.geometry], dxfattribs={"layer": layer})
+                         entities.append(self._entity_record(feat.feature_id, "POLYLINE", layer, feat.geometry))
+                    elif feat.feature_type == "Polygon":
+                         pts = [tuple(p) for p in feat.geometry]
+                         pts.append(pts[0])
+                         msp.add_lwpolyline(pts, close=True, dxfattribs={"layer": layer})
+                         entities.append(self._entity_record(feat.feature_id, "POLYGON", layer, feat.geometry))
+                except Exception:
+                    pass
+
+            # Control Points
+            for cp in survey_data.control_points:
+                layer = cp.source_layer or "TOTaLi-SURV-CONTROL-DRAFT"
+                try:
+                    msp.add_point(tuple(cp.geometry[0]), dxfattribs={"layer": layer})
+                    entities.append(self._entity_record(cp.feature_id, "POINT", layer, cp.geometry))
+                except Exception:
+                    pass
+
         doc.saveas(str(path))
 
         return {
@@ -290,8 +321,11 @@ class CADShield(PipelinePhase):
             "entities": entities,
         }
 
-    def _write_dxf_manual(self, extraction: ExtractionResult, path: Path) -> dict:
+    def _write_dxf_manual(self, context: PipelineContext, path: Path) -> dict:
         """Minimal DXF writer fallback when ezdxf is not available."""
+        extraction = context.extraction
+        survey_data = context.survey_data
+
         entities = []
         lines = [
             "0", "SECTION", "2", "HEADER", "0", "ENDSEC",
@@ -311,6 +345,19 @@ class CADShield(PipelinePhase):
                     "11", str(p1[0]), "21", str(p1[1]), "31", str(p1[2]),
                 ])
                 entities.append(self._entity_record(entity_id, "LINE", layer, brk))
+
+        # Write Survey Points (manual support limited to points and breaklines for brevity)
+        if survey_data:
+            for feat in survey_data.features:
+                if feat.feature_type == "Point":
+                    layer = feat.source_layer or f"TOTaLi-SURV-{feat.feature_code.upper()}-DRAFT"
+                    p = feat.geometry[0]
+                    lines.extend([
+                        "0", "POINT",
+                        "8", layer,
+                        "10", str(p[0]), "20", str(p[1]), "30", str(p[2])
+                    ])
+                    entities.append(self._entity_record(feat.feature_id, "POINT", layer, feat.geometry))
 
         lines.extend(["0", "ENDSEC", "0", "EOF"])
 

@@ -15,10 +15,11 @@ from totali.segmentation.classifier import PointCloudClassifier
 from totali.extraction.extractor import DeterministicExtractor
 from totali.cad_shielding.shield import CADShield
 from totali.linting.surveyor_lint import SurveyorLinter
+from totali.integration.integrator import SurveyIntegrator
 from totali.audit.logger import AuditLogger
 
 
-PHASE_ORDER = ["geodetic", "segment", "extract", "shield", "lint"]
+PHASE_ORDER = ["geodetic", "segment", "extract", "integration", "shield", "lint"]
 
 
 class PipelineOrchestrator:
@@ -32,6 +33,7 @@ class PipelineOrchestrator:
             "geodetic": GeodeticGatekeeper(self.config.geodetic, audit),
             "segment": PointCloudClassifier(self.config.segmentation, audit),
             "extract": DeterministicExtractor(self.config.extraction, audit),
+            "integration": SurveyIntegrator(self.config.integration, audit),
             "shield": CADShield(self.config.cad_shielding, audit),
             "lint": SurveyorLinter(self.config.linting, audit),
         }
@@ -49,6 +51,10 @@ class PipelineOrchestrator:
         )
 
         for phase_name in phases_to_run:
+            if phase_name not in self.phases:
+                # Should not happen if CLI validates phase choice, but safe guard
+                continue
+
             processor = self.phases[phase_name]
             self.audit.log(f"phase_start", {"phase": phase_name})
 
@@ -118,5 +124,6 @@ class PipelineOrchestrator:
         result.classification = context.classification
         result.extraction = context.extraction
         result.healing = context.healing
+        result.survey_data = context.survey_data
         result.duration_sec = time.time() - t0
         return result

@@ -128,9 +128,14 @@ class TestEntityRecord:
 
 
 class TestDXFWriting:
-    def test_manual_fallback_writes_file(self, shield, sample_extraction, tmp_path):
+    def test_manual_fallback_writes_file(self, shield, sample_extraction, tmp_path, tmp_output):
         out_path = tmp_path / "test.dxf"
-        manifest = shield._write_dxf_manual(sample_extraction, out_path)
+        # Must pass a context now
+        ctx = PipelineContext(
+            input_path="/f.las", output_dir=tmp_output,
+            extraction=sample_extraction,
+        )
+        manifest = shield._write_dxf_manual(ctx, out_path)
         assert out_path.exists()
         assert manifest["format"] == "dxf"
         assert manifest["entity_count"] >= 0
@@ -141,7 +146,7 @@ class TestDXFWriting:
 class TestPhaseRun:
     @patch("totali.cad_shielding.shield.CADShield._write_dxf")
     def test_run_produces_manifest(self, mock_write, shield, tmp_output, sample_extraction, sample_classification):
-        mock_write.side_effect = lambda ext, path: shield._write_dxf_manual(ext, path)
+        mock_write.side_effect = lambda ctx, path: shield._write_dxf_manual(ctx, path)
         ctx = PipelineContext(
             input_path="/f.las", output_dir=tmp_output,
             extraction=sample_extraction,
@@ -160,7 +165,7 @@ class TestPhaseRun:
 
     @patch("totali.cad_shielding.shield.CADShield._write_dxf")
     def test_run_writes_output_files(self, mock_write, shield, tmp_output, sample_extraction, sample_classification):
-        mock_write.side_effect = lambda ext, path: shield._write_dxf_manual(ext, path)
+        mock_write.side_effect = lambda ctx, path: shield._write_dxf_manual(ctx, path)
         ctx = PipelineContext(
             input_path="/f.las", output_dir=tmp_output,
             extraction=sample_extraction,
@@ -183,7 +188,7 @@ class TestPhaseRun:
 
     @patch("totali.cad_shielding.shield.CADShield._write_dxf")
     def test_all_entities_are_draft(self, mock_write, shield, tmp_output, sample_extraction, sample_classification):
-        mock_write.side_effect = lambda ext, path: shield._write_dxf_manual(ext, path)
+        mock_write.side_effect = lambda ctx, path: shield._write_dxf_manual(ctx, path)
         ctx = PipelineContext(
             input_path="/f.las", output_dir=tmp_output,
             extraction=sample_extraction,
