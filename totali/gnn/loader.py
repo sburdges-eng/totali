@@ -1,6 +1,9 @@
 """
 Unified Graph Data Loader for LiDAR, TIN, TIF, COGO, DWG, and LandXML.
 Constructs a unified graph representation from diverse survey sources.
+
+This module abstracts the complexity of parsing various geospatial formats
+into a common  structure consisting of  and .
 """
 
 import math
@@ -28,28 +31,43 @@ from totali.gnn.config import GNNConfig
 from totali.gnn.graph_types import GraphData, NodeFeatures, EdgeFeatures
 
 class UnifiedLoader:
+    """
+    Orchestrates the ingestion of multiple survey data formats into a single graph.
+
+    Attributes:
+        config (GNNConfig): Configuration parameters for file paths and loading options.
+        graph (GraphData): The accumulated graph structure.
+    """
     def __init__(self, config: GNNConfig):
         self.config = config
         self.graph = GraphData()
 
     def load_lidar(self, filepath: str) -> None:
-        """Parses LAS/LAZ files and adds points as nodes."""
+        """
+        Parses LAS/LAZ files and adds points as graph nodes.
+
+        Args:
+            filepath (str): Path to the .las or .laz file.
+        """
         if not laspy:
             print("WARNING: laspy not installed. Skipping LiDAR.")
+            return
+
+        if not os.path.exists(filepath):
+            print(f"WARNING: LiDAR file not found: {filepath}")
             return
 
         try:
             las = laspy.read(filepath)
 
-            # Simple downsampling or selection logic
-            # For GNN, we might want to subsample large clouds
+            # Simple downsampling or selection logic could go here
             points = las.points
 
             # Add nodes
             for i in range(len(points)):
                 x, y, z = points.x[i], points.y[i], points.z[i]
 
-                # Colors/Intensity
+                # Colors/Intensity extraction with safe fallbacks
                 r = int(points.red[i]) if hasattr(points, 'red') else 0
                 g = int(points.green[i]) if hasattr(points, 'green') else 0
                 b = int(points.blue[i]) if hasattr(points, 'blue') else 0
@@ -70,7 +88,17 @@ class UnifiedLoader:
             print(f"Error loading LiDAR {filepath}: {e}")
 
     def load_tin_xml(self, filepath: str) -> None:
-        """Parses LandXML or simple TIN XML formats."""
+        """
+        Parses LandXML or simple TIN XML formats.
+        Extracts both vertices (nodes) and faces (edges).
+
+        Args:
+            filepath (str): Path to the XML file.
+        """
+        if not os.path.exists(filepath):
+            print(f"WARNING: TIN XML file not found: {filepath}")
+            return
+
         try:
             import xml.etree.ElementTree as ET
             tree = ET.parse(filepath)
@@ -91,8 +119,6 @@ class UnifiedLoader:
                 coords = p.text.strip().split()
                 if len(coords) >= 3:
                     # LandXML is usually Y X Z (Northing Easting Elevation)
-                    # BUT many implementations vary. Assuming X Y Z for simplicity or check units
-                    # Standard LandXML 1.2 is Y X Z (North, East, Elev)
                     # We'll assume standard Y X Z for now
                     y, x, z = map(float, coords[:3])
 
@@ -127,7 +153,16 @@ class UnifiedLoader:
             print(f"Error loading TIN XML {filepath}: {e}")
 
     def load_cogo_crd(self, filepath: str) -> None:
-        """Parses ASCII/CSV/CRD coordinate files (P,N,E,Z,D)."""
+        """
+        Parses ASCII/CSV/CRD coordinate files (P,N,E,Z,D).
+
+        Args:
+            filepath (str): Path to the coordinate text file.
+        """
+        if not os.path.exists(filepath):
+            print(f"WARNING: COGO file not found: {filepath}")
+            return
+
         try:
             with open(filepath, 'r') as f:
                 for line in f:
@@ -171,9 +206,18 @@ class UnifiedLoader:
             print(f"Error loading COGO/CRD {filepath}: {e}")
 
     def load_dwg_linework(self, filepath: str) -> None:
-        """Parses DWG/DXF for linework vertices and edges."""
+        """
+        Parses DWG/DXF for linework vertices and edges.
+
+        Args:
+            filepath (str): Path to the .dxf or .dwg file.
+        """
         if not ezdxf:
             print("WARNING: ezdxf not installed. Skipping DWG/DXF.")
+            return
+
+        if not os.path.exists(filepath):
+            print(f"WARNING: DWG file not found: {filepath}")
             return
 
         try:
@@ -234,12 +278,20 @@ class UnifiedLoader:
 
     def load_imagery_tif(self, filepath: str) -> None:
         """
-        Loads TIF imagery.
-        NOTE: This does NOT add nodes. It enriches existing nodes with RGB if they fall within the image bounds.
-        Requires nodes to have valid X,Y coordinates matching the TIF's geo-referencing (World File or GeoTIFF tags).
-        Simple implementation assumes TIF pixel space or matching units for now.
+        Enriches existing nodes with RGB values sampled from a GeoTIFF.
+
+        Args:
+            filepath (str): Path to the .tif file.
+
+        Note:
+            This method does not create new nodes. It assumes existing nodes
+            (loaded from other sources) are within the bounds of the image.
         """
         if not Image:
+            return
+
+        if not os.path.exists(filepath):
+            print(f"WARNING: TIF file not found: {filepath}")
             return
 
         try:
@@ -292,8 +344,13 @@ class UnifiedLoader:
         except Exception as e:
             print(f"Error loading TIF {filepath}: {e}")
 
-    def load_all(self):
-        """Orchestrates loading from all configured sources."""
+    def load_all(self) -> GraphData:
+        """
+        Orchestrates loading from all configured sources in the GNNConfig.
+
+        Returns:
+            GraphData: The fully populated graph structure.
+        """
         for f in self.config.input_lidar:
             self.load_lidar(f)
         for f in self.config.input_tin_xml:
