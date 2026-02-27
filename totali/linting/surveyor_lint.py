@@ -2,7 +2,6 @@
 Phase 5: Surveyor Linting + Human Certification
 =================================================
 Ghost suggestions inside CAD → human accepts/rejects → logged.
-Outputs remain DRAFT until promoted by certified workflow rules.
 AUTO-PROMOTE IS ALWAYS FALSE. PLS remains sovereign.
 """
 
@@ -14,34 +13,26 @@ from typing import Optional
 from totali.pipeline.models import (
     PhaseResult, GeometryStatus, LintItem, OcclusionType
 )
-from totali.pipeline.base_phase import PipelinePhase
-from totali.pipeline.context import PipelineContext
 from totali.audit.logger import AuditLogger
 
 
-class SurveyorLinter(PipelinePhase):
+class SurveyorLinter:
     def __init__(self, config: dict, audit: AuditLogger):
-        super().__init__(config, audit)
+        self.config = config
+        self.audit = audit
         self.ghost_opacity = config.get("ghost_opacity", 0.4)
         self.flag_colors = config.get("flag_colors", {})
-        self.auto_promote = False  # HARDCODED FALSE – never auto-promote
+        self.auto_promote = False  # HARDCODED FALSE
         self.require_pls = config.get("require_pls_signature", True)
 
-    def validate_inputs(self, context: PipelineContext) -> tuple[bool, list[str]]:
-        errors: list[str] = []
-        if context.manifest is None:
-            errors.append("manifest missing; run shield phase first")
-        return len(errors) == 0, errors
-
-    def run(self, context: PipelineContext) -> PhaseResult:
-        manifest = context.manifest or {}
-        extraction = context.extraction
-        classification = context.classification
-        output_dir = Path(context.output_dir)
+    def run(self, context: dict) -> PhaseResult:
+        manifest = context.get("manifest", {})
+        extraction = context.get("extraction")
+        classification = context.get("classification")
+        output_dir = Path(context.get("output_dir", "output"))
 
         entities = manifest.get("entities", [])
 
-        # Build lint items from manifest entities
         lint_items = []
         for entity in entities:
             confidence = self._estimate_confidence(entity, classification)
@@ -58,15 +49,12 @@ class SurveyorLinter(PipelinePhase):
             )
             lint_items.append(item)
 
-        # Generate lint report
         report = self._generate_lint_report(lint_items, extraction)
 
-        # Write lint report
         report_path = output_dir / "lint_report.json"
         with open(report_path, "w") as f:
             json.dump(report, f, indent=2, default=str)
 
-        # Write review worksheet (human-readable)
         worksheet_path = output_dir / "review_worksheet.txt"
         self._write_review_worksheet(lint_items, extraction, worksheet_path)
 
@@ -93,27 +81,19 @@ class SurveyorLinter(PipelinePhase):
         )
 
     def _estimate_confidence(self, entity: dict, classification) -> float:
-        """Estimate confidence for a CAD entity based on classification results."""
         if classification is None:
             return 0.5
-        # Use mean confidence as proxy (in production, would map entity geometry
-        # back to source points and compute per-entity confidence)
         return classification.mean_confidence
 
     def _check_occlusion(self, entity: dict, extraction) -> OcclusionType:
-        """Check if entity overlaps with occlusion zones."""
         if extraction is None or not extraction.occlusion_zones:
             return OcclusionType.NONE
-
         layer = entity.get("layer", "")
         if "OCCLUSION" in layer:
             return OcclusionType.UNKNOWN
-
-        # Simplified: in production, would do spatial intersection
         return OcclusionType.NONE
 
     def _generate_lint_report(self, items: list, extraction) -> dict:
-        """Generate the full lint report with summary and item details."""
         high = sum(1 for i in items if i.confidence >= 0.75)
         medium = sum(1 for i in items if 0.50 <= i.confidence < 0.75)
         low = sum(1 for i in items if i.confidence < 0.50)
@@ -158,7 +138,6 @@ class SurveyorLinter(PipelinePhase):
                 "occlusion_zones_require": "field_verification_plan",
             },
         }
-
         return report
 
     def _confidence_color(self, confidence: float) -> str:
@@ -169,10 +148,7 @@ class SurveyorLinter(PipelinePhase):
         else:
             return self.flag_colors.get("low_confidence", "#FF0000")
 
-    def _write_review_worksheet(
-        self, items: list, extraction, path: Path
-    ):
-        """Write human-readable review worksheet."""
+    def _write_review_worksheet(self, items: list, extraction, path: Path):
         lines = [
             "=" * 72,
             "TOTaLi DRAFTING – SURVEYOR REVIEW WORKSHEET",
@@ -185,27 +161,21 @@ class SurveyorLinter(PipelinePhase):
             "QA FLAGS",
             "-" * 72,
         ]
-
         if extraction and extraction.qa_flags:
             for flag in extraction.qa_flags:
-                lines.append(
-                    f"  [{flag['severity'].upper()}] {flag['message']}"
-                )
+                lines.append(f"  [{flag['severity'].upper()}] {flag['message']}")
         else:
             lines.append("  No QA flags.")
-
         lines.extend([
             "",
             "-" * 72,
             "ITEMS REQUIRING ATTENTION (Low Confidence / Occluded)",
             "-" * 72,
         ])
-
         attention_items = [
             i for i in items
             if i.confidence < 0.50 or i.occlusion != OcclusionType.NONE
         ]
-
         if attention_items:
             for item in attention_items:
                 lines.append(
@@ -217,7 +187,6 @@ class SurveyorLinter(PipelinePhase):
                 lines.append("")
         else:
             lines.append("  No items flagged for special attention.")
-
         lines.extend([
             "",
             "-" * 72,
@@ -235,15 +204,11 @@ class SurveyorLinter(PipelinePhase):
             "",
             "=" * 72,
         ])
-
         with open(path, "w") as f:
             f.write("\n".join(lines))
 
-    # ── Interactive Review API ──────────────────────────────────────────
-
     @staticmethod
     def accept_item(item: LintItem, reviewer: str, audit: AuditLogger, notes: str = ""):
-        """Accept a draft item (called by CAD plugin or review UI)."""
         item.status = GeometryStatus.ACCEPTED
         item.reviewer = reviewer
         item.review_timestamp = datetime.now(timezone.utc).isoformat()
@@ -256,7 +221,6 @@ class SurveyorLinter(PipelinePhase):
 
     @staticmethod
     def reject_item(item: LintItem, reviewer: str, audit: AuditLogger, notes: str = ""):
-        """Reject a draft item."""
         item.status = GeometryStatus.REJECTED
         item.reviewer = reviewer
         item.review_timestamp = datetime.now(timezone.utc).isoformat()
@@ -272,11 +236,6 @@ class SurveyorLinter(PipelinePhase):
     def promote_to_certified(
         items: list, pls_name: str, pls_license: str, audit: AuditLogger
     ) -> bool:
-        """
-        Promote all accepted items to certified status.
-        Requires ALL items to be either ACCEPTED or REJECTED (no DRAFT remaining).
-        Returns False if any items are still in DRAFT status.
-        """
         draft_remaining = [i for i in items if i.status == GeometryStatus.DRAFT]
         if draft_remaining:
             audit.log("promote_blocked", {
@@ -284,14 +243,11 @@ class SurveyorLinter(PipelinePhase):
                 "pls": pls_name,
             })
             return False
-
         accepted = [i for i in items if i.status == GeometryStatus.ACCEPTED]
         for item in accepted:
             item.status = GeometryStatus.CERTIFIED
-            # Remove -DRAFT suffix from layer name
             if item.layer.endswith("-DRAFT"):
                 item.layer = item.layer[:-6]
-
         audit.log("certify", {
             "pls_name": pls_name,
             "pls_license": pls_license,
@@ -299,5 +255,4 @@ class SurveyorLinter(PipelinePhase):
             "rejected_count": len([i for i in items if i.status == GeometryStatus.REJECTED]),
             "timestamp": datetime.now(timezone.utc).isoformat(),
         })
-
         return True

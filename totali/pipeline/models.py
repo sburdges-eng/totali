@@ -54,9 +54,9 @@ class PointCloudStats:
 @dataclass
 class ClassificationResult:
     """Per-point classification with confidence scores."""
-    labels: Optional[np.ndarray] = None         # int array of class IDs
-    confidences: Optional[np.ndarray] = None     # float array [0,1]
-    occlusion_mask: Optional[np.ndarray] = None  # bool array
+    labels: Optional[np.ndarray] = None
+    confidences: Optional[np.ndarray] = None
+    occlusion_mask: Optional[np.ndarray] = None
     class_counts: dict = field(default_factory=dict)
     mean_confidence: float = 0.0
     low_confidence_count: int = 0
@@ -68,8 +68,8 @@ class ExtractionResult:
     """Deterministic geometry extraction outputs."""
     dtm_vertices: Optional[np.ndarray] = None
     dtm_faces: Optional[np.ndarray] = None
-    breaklines: list = field(default_factory=list)       # list of Nx3 arrays
-    contours_minor: list = field(default_factory=list)    # list of Nx2 arrays
+    breaklines: list = field(default_factory=list)
+    contours_minor: list = field(default_factory=list)
     contours_index: list = field(default_factory=list)
     building_footprints: list = field(default_factory=list)
     curb_lines: list = field(default_factory=list)
@@ -117,7 +117,7 @@ class PipelineResult:
 class LintItem:
     """A single suggestion for surveyor review."""
     item_id: str
-    geometry_type: str           # "breakline", "contour", "building", etc.
+    geometry_type: str
     layer: str
     status: GeometryStatus = GeometryStatus.DRAFT
     confidence: float = 0.0

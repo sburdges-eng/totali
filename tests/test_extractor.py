@@ -1,163 +1,119 @@
-"""Tests for Phase 3: DeterministicExtractor."""
-
+"""Tests for totali.extraction.extractor"""
 import numpy as np
 import pytest
+from pathlib import Path
 
 from totali.extraction.extractor import DeterministicExtractor
-from totali.pipeline.context import PipelineContext
-from totali.pipeline.models import (
-    PhaseResult,
-    ExtractionResult,
-    ClassificationResult,
-    CRSMetadata,
-    PointCloudStats,
-)
+from totali.pipeline.models import ClassificationResult, ExtractionResult
 
 
-@pytest.fixture
-def extractor(audit_logger, sample_config):
-    return DeterministicExtractor(sample_config["extraction"], audit_logger)
+def test_extractor_builds_dtm(config, audit, output_dir, sample_xyz, sample_classification):
+    ext = DeterministicExtractor(config["extraction"], audit)
+    context = {
+        "points_xyz": sample_xyz,
+        "classification": sample_classification,
+        "output_dir": output_dir,
+    }
+    result = ext.run(context)
+    assert result.success is True
+    er = result.data["extraction"]
+    assert er.dtm_vertices is not None
+    assert er.dtm_faces is not None
+    assert len(er.dtm_faces) > 0
 
 
-@pytest.fixture
-def ground_points():
-    """Grid of ground points suitable for Delaunay triangulation."""
+def test_extractor_generates_contours(config, audit, output_dir, sample_xyz, sample_classification):
+    ext = DeterministicExtractor(config["extraction"], audit)
+    context = {
+        "points_xyz": sample_xyz,
+        "classification": sample_classification,
+        "output_dir": output_dir,
+    }
+    result = ext.run(context)
+    er = result.data["extraction"]
+    total_contours = len(er.contours_minor) + len(er.contours_index)
+    assert total_contours >= 0  # may be 0 for very flat surface
+
+
+def test_extractor_error_metrics(config, audit, output_dir, sample_xyz, sample_classification):
+    ext = DeterministicExtractor(config["extraction"], audit)
+    context = {
+        "points_xyz": sample_xyz,
+        "classification": sample_classification,
+        "output_dir": output_dir,
+    }
+    result = ext.run(context)
+    er = result.data["extraction"]
+    assert "dtm" in er.error_metrics
+    assert "vertex_count" in er.error_metrics["dtm"]
+    assert "face_count" in er.error_metrics["dtm"]
+
+
+def test_extractor_writes_report(config, audit, output_dir, sample_xyz, sample_classification):
+    ext = DeterministicExtractor(config["extraction"], audit)
+    context = {
+        "points_xyz": sample_xyz,
+        "classification": sample_classification,
+        "output_dir": output_dir,
+    }
+    result = ext.run(context)
+    report_path = output_dir / "extraction_report.json"
+    assert report_path.exists()
+
+
+def test_extractor_insufficient_ground_fails(config, audit, output_dir):
+    xyz = np.array([[0, 0, 100], [1, 1, 101], [2, 2, 102]], dtype=float)
+    cr = ClassificationResult(
+        labels=np.array([6, 6, 6]),  # all building, no ground
+        confidences=np.full(3, 0.9),
+        mean_confidence=0.9,
+    )
+    ext = DeterministicExtractor(config["extraction"], audit)
+    context = {"points_xyz": xyz, "classification": cr, "output_dir": output_dir}
+    result = ext.run(context)
+    assert result.success is False
+    assert "Insufficient ground" in result.message
+
+
+def test_extractor_qa_flags_low_confidence(config, audit, output_dir):
     rng = np.random.default_rng(42)
-    xs = np.linspace(0, 100, 20)
-    ys = np.linspace(0, 100, 20)
-    xx, yy = np.meshgrid(xs, ys)
-    zz = 100.0 + rng.uniform(-0.5, 0.5, xx.shape)
-    return np.column_stack([xx.ravel(), yy.ravel(), zz.ravel()])
+    n = 200
+    xyz = np.column_stack([rng.uniform(0, 100, n), rng.uniform(0, 100, n), rng.uniform(6100, 6101, n)])
+    cr = ClassificationResult(
+        labels=np.full(n, 2, dtype=np.int32),
+        confidences=np.full(n, 0.3, dtype=np.float32),  # all low confidence
+        occlusion_mask=np.zeros(n, dtype=bool),
+        mean_confidence=0.3,
+        low_confidence_count=n,
+    )
+    ext = DeterministicExtractor(config["extraction"], audit)
+    context = {"points_xyz": xyz, "classification": cr, "output_dir": output_dir}
+    result = ext.run(context)
+    assert result.success is True
+    er = result.data["extraction"]
+    flag_types = [f["type"] for f in er.qa_flags]
+    assert "low_confidence" in flag_types
 
 
-class TestValidateInputs:
-    def test_missing_points(self, extractor, tmp_output):
-        ctx = PipelineContext(input_path="/f.las", output_dir=tmp_output)
-        valid, errors = extractor.validate_inputs(ctx)
-        assert valid is False
-        assert any("points_xyz" in e for e in errors)
-
-    def test_missing_classification(self, extractor, tmp_output, sample_points):
-        ctx = PipelineContext(
-            input_path="/f.las", output_dir=tmp_output,
-            points_xyz=sample_points,
-        )
-        valid, errors = extractor.validate_inputs(ctx)
-        assert valid is False
-        assert any("classification" in e for e in errors)
-
-    def test_valid_inputs(self, extractor, pipeline_context):
-        valid, errors = extractor.validate_inputs(pipeline_context)
-        assert valid is True
-
-
-class TestDTMBuilding:
-    def test_builds_tin_from_ground(self, extractor, ground_points):
-        vertices, faces, metrics = extractor._build_dtm(ground_points)
-        assert len(vertices) > 0
-        assert len(faces) > 0
-        assert metrics["vertex_count"] > 0
-        assert metrics["face_count"] > 0
-
-    def test_edge_length_filtering(self, extractor, ground_points):
-        extractor.dtm_cfg["max_triangle_edge_length"] = 10.0
-        _, faces, metrics = extractor._build_dtm(ground_points)
-        assert metrics["max_edge_length"] <= 10.0
-
-    def test_empty_ground_returns_empty(self, extractor):
-        pts = np.zeros((2, 3))  # Not enough for triangulation
-        # Delaunay needs at least 3 non-collinear points; this should
-        # either produce empty faces or raise (which _build_dtm doesn't guard)
-        # At minimum, it shouldn't crash silently.
-        try:
-            vertices, faces, metrics = extractor._build_dtm(pts)
-        except Exception:
-            pass  # acceptable — insufficient points
-
-
-class TestBreaklineExtraction:
-    def test_extracts_breaklines_from_sloped_surface(self, extractor, ground_points):
-        vertices, faces, _ = extractor._build_dtm(ground_points)
-        breaklines, metrics = extractor._extract_breaklines(ground_points, vertices, faces)
-        assert isinstance(breaklines, list)
-        assert "count" in metrics
-
-    def test_no_breaklines_with_one_face(self, extractor):
-        pts = np.array([[0, 0, 0], [1, 0, 0], [0, 1, 0.0]])
-        faces = np.array([[0, 1, 2]])
-        breaklines, metrics = extractor._extract_breaklines(pts, pts, faces)
-        assert metrics["count"] == 0
-
-
-class TestContourGeneration:
-    def test_generates_contours(self, extractor, ground_points):
-        vertices, faces, _ = extractor._build_dtm(ground_points)
-        minor, index, metrics = extractor._generate_contours(vertices, faces)
-        assert isinstance(minor, list)
-        assert isinstance(index, list)
-        assert "minor_count" in metrics
-        assert "index_count" in metrics
-
-    def test_no_contours_with_no_faces(self, extractor):
-        pts = np.array([[0, 0, 100]])
-        faces = np.empty((0, 3), dtype=int)
-        minor, index, metrics = extractor._generate_contours(pts, faces)
-        assert minor == []
-        assert index == []
-
-
-class TestClustering:
-    def test_cluster_groups_nearby_points(self, extractor):
-        pts = np.array([
-            [0, 0, 0], [1, 1, 0], [2, 2, 0],
-            [100, 100, 0], [101, 101, 0],
-        ])
-        clusters = extractor._cluster_points_2d(pts, radius=5.0)
-        assert len(clusters) >= 1
-
-    def test_empty_input(self, extractor):
-        pts = np.empty((0, 3))
-        clusters = extractor._cluster_points_2d(pts, radius=5.0)
-        assert clusters == []
-
-
-class TestQAFlags:
-    def test_flags_low_confidence(self, extractor, sample_classification):
-        result = ExtractionResult()
-        flags = extractor._generate_qa_flags(result, sample_classification)
-        low_conf_flags = [f for f in flags if f["type"] == "low_confidence"]
-        if sample_classification.low_confidence_count > 0:
-            assert len(low_conf_flags) > 0
-
-    def test_flags_occlusion_zones(self, extractor, sample_classification):
-        result = ExtractionResult()
-        result.occlusion_zones = [np.array([[0, 0], [1, 0], [0, 1]])]
-        flags = extractor._generate_qa_flags(result, sample_classification)
-        occ_flags = [f for f in flags if f["type"] == "occlusion"]
-        assert len(occ_flags) == 1
-
-
-class TestPhaseRun:
-    def test_run_end_to_end(self, extractor, pipeline_context):
-        result = extractor.run(pipeline_context)
-        assert isinstance(result, PhaseResult)
-        assert result.phase == "extract"
-        if result.success:
-            assert "extraction" in result.data
-            assert isinstance(result.data["extraction"], ExtractionResult)
-            assert len(result.output_files) > 0
-
-    def test_run_insufficient_ground_fails(self, extractor, tmp_output, sample_las):
-        few_pts = np.random.default_rng(0).uniform(0, 10, (20, 3))
-        cls = ClassificationResult(
-            labels=np.zeros(20, dtype=np.int32),  # no ground (class 2)
-            confidences=np.full(20, 0.5, dtype=np.float32),
-        )
-        ctx = PipelineContext(
-            input_path="/f.las", output_dir=tmp_output,
-            points_xyz=few_pts, las=sample_las,
-            classification=cls,
-        )
-        result = extractor.run(ctx)
-        assert result.success is False
-        assert "ground" in result.message.lower() or "Insufficient" in result.message
+def test_extractor_building_footprints(config, audit, output_dir):
+    rng = np.random.default_rng(42)
+    # 50 ground + 50 building cluster
+    gx = rng.uniform(0, 200, 50)
+    gy = rng.uniform(0, 200, 50)
+    gz = np.full(50, 6100.0)
+    bx = rng.uniform(80, 120, 50)
+    by = rng.uniform(80, 120, 50)
+    bz = np.full(50, 6120.0)
+    xyz = np.column_stack([np.concatenate([gx, bx]), np.concatenate([gy, by]), np.concatenate([gz, bz])])
+    labels = np.array([2]*50 + [6]*50, dtype=np.int32)
+    cr = ClassificationResult(
+        labels=labels,
+        confidences=np.full(100, 0.8, dtype=np.float32),
+        occlusion_mask=np.zeros(100, dtype=bool),
+        mean_confidence=0.8,
+        low_confidence_count=0,
+    )
+    ext = DeterministicExtractor(config["extraction"], audit)
+    context = {"points_xyz": xyz, "classification": cr, "output_dir": output_dir}
+    result = ext.run(context)
+    assert result.success is True

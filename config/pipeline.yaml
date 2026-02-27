@@ -1,30 +1,23 @@
-# TOTaLi Drafting Pipeline Configuration
-# =========================================
-
 project:
-  name: "TOTaLi_Project"
-  version: "0.1.0"
-  pls_authority: "CO PLS #XXXXX"
+  name: "TOTaLi_Test"
+  description: "Synthetic test project"
 
-# Phase 1: Geodetic Gatekeeper
 geodetic:
   allowed_crs:
-    - "EPSG:2231"   # NAD83 Colorado North (ftUS)
-    - "EPSG:2232"   # NAD83 Colorado Central (ftUS)
-    - "EPSG:2233"   # NAD83 Colorado South (ftUS)
-    - "EPSG:6428"   # NAD83(2011) Colorado North (ftUS)
-    - "EPSG:6430"   # NAD83(2011) Colorado Central (ftUS)
-  required_epoch: "2010.0"
-  geoid_model: "GEOID18"
-  unit_tolerance_ft: 0.01
+    - "EPSG:2232"
+  reject_on_missing_crs: false
   reject_on_mixed_datum: true
-  reject_on_missing_crs: true
+  geoid_model: "GEOID18"
+  required_epoch: "2010.0"
   elevation_unit: "US_survey_foot"
 
-# Phase 2: ML Segmentation
 segmentation:
   model_path: "models/point_transformer_v2.onnx"
-  device: "cpu"  # cpu | cuda | tensorrt
+  device: "cpu"
+  confidence_threshold: 0.75
+  occlusion_threshold: 0.30
+  batch_size: 65536
+  voxel_size: 0.05
   classes:
     0: "unclassified"
     2: "ground"
@@ -32,46 +25,31 @@ segmentation:
     4: "medium_vegetation"
     5: "high_vegetation"
     6: "building"
-    7: "noise"
     9: "water"
-    10: "rail"
-    11: "road"
     13: "wire_guard"
     14: "wire_conductor"
-    15: "tower"
-    17: "bridge"
+    17: "bridge_deck"
     64: "curb"
     65: "hardscape"
-  confidence_threshold: 0.75
-  occlusion_threshold: 0.30
-  batch_size: 65536
-  voxel_size: 0.05
 
-# Phase 3: Deterministic Extraction
 extraction:
   dtm:
     max_triangle_edge_length: 50.0
-    max_triangle_angle: 85.0
-    thin_factor: 0.1
+    thin_factor: 1.0
   breaklines:
     min_angle_degrees: 15.0
     min_length_ft: 5.0
-    smoothing_iterations: 2
   contours:
     interval_ft: 1.0
     index_interval_ft: 5.0
-    smoothing_tolerance: 0.5
   planimetrics:
     min_building_area_sqft: 100.0
-    simplify_tolerance: 0.25
 
-# Phase 4: CAD Shielding
 cad_shielding:
-  format: "dxf"  # dxf | dwg | dgn
+  format: "dxf"
   geometry_healing:
     close_tolerance: 0.001
     degenerate_face_threshold: 0.0001
-    self_intersection_check: true
   layer_mapping:
     ground_surface: "TOTaLi-SURV-DTM-DRAFT"
     breaklines: "TOTaLi-SURV-BRKLN-DRAFT"
@@ -79,38 +57,19 @@ cad_shielding:
     contours_index: "TOTaLi-SURV-CONT-INDEX-DRAFT"
     buildings: "TOTaLi-PLAN-BLDG-DRAFT"
     curbs: "TOTaLi-PLAN-CURB-DRAFT"
-    hardscape: "TOTaLi-PLAN-HDSC-DRAFT"
     wire: "TOTaLi-PLAN-WIRE-DRAFT"
     occlusion_zones: "TOTaLi-QA-OCCLUSION"
-    uncertainty_flags: "TOTaLi-QA-FLAGS"
-  certified_layer_suffix: ""  # Remove -DRAFT when promoted
   middleware_timeout_sec: 30
   max_retry: 3
 
-# Phase 5: Surveyor Linting
 linting:
   ghost_opacity: 0.4
+  require_pls_signature: true
   flag_colors:
     high_confidence: "#00FF00"
     medium_confidence: "#FFAA00"
     low_confidence: "#FF0000"
-    occluded: "#FF00FF"
-  auto_promote: false  # NEVER set to true
-  require_pls_signature: true
 
-# Audit / Chain of Custody
 audit:
   log_dir: "audit_logs"
-  log_format: "jsonl"
   hash_algorithm: "sha256"
-  log_events:
-    - "ingest"
-    - "transform"
-    - "classify"
-    - "extract"
-    - "heal"
-    - "insert"
-    - "accept"
-    - "reject"
-    - "promote"
-    - "certify"

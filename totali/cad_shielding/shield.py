@@ -1,7 +1,6 @@
 """
 Phase 4: CAD Shielding
 =======================
-"Build around, not through" – middleware isolation prevents CAD kernel crashes.
 Geometry quarantine/healing ensures watertight, topologically sane inserts.
 All output goes to DRAFT layers only.
 """
@@ -17,29 +16,22 @@ import numpy as np
 from totali.pipeline.models import (
     PhaseResult, ExtractionResult, HealingReport, GeometryStatus
 )
-from totali.pipeline.base_phase import PipelinePhase
-from totali.pipeline.context import PipelineContext
 from totali.audit.logger import AuditLogger
 
 
-class CADShield(PipelinePhase):
+class CADShield:
     def __init__(self, config: dict, audit: AuditLogger):
-        super().__init__(config, audit)
+        self.config = config
+        self.audit = audit
         self.format = config.get("format", "dxf")
         self.healing_cfg = config.get("geometry_healing", {})
         self.layer_map = config.get("layer_mapping", {})
         self.timeout = config.get("middleware_timeout_sec", 30)
         self.max_retry = config.get("max_retry", 3)
 
-    def validate_inputs(self, context: PipelineContext) -> tuple[bool, list[str]]:
-        errors: list[str] = []
-        if context.extraction is None:
-            errors.append("extraction missing; run extract phase first")
-        return len(errors) == 0, errors
-
-    def run(self, context: PipelineContext) -> PhaseResult:
-        extraction: ExtractionResult | None = context.extraction
-        output_dir = Path(context.output_dir)
+    def run(self, context: dict) -> PhaseResult:
+        extraction: ExtractionResult = context.get("extraction")
+        output_dir = Path(context.get("output_dir", "output"))
 
         if extraction is None:
             return PhaseResult(
@@ -47,7 +39,6 @@ class CADShield(PipelinePhase):
                 message="No extraction data in context"
             )
 
-        # Geometry healing pass
         healing = self._heal_geometry(extraction)
 
         self.audit.log("heal", {
@@ -57,16 +48,13 @@ class CADShield(PipelinePhase):
             "passed": healing.passed_count,
         })
 
-        # Write to DXF
         dxf_path = output_dir / "totali_draft_output.dxf"
         entity_manifest = self._write_dxf(extraction, dxf_path)
 
-        # Write entity manifest (chain of custody)
         manifest_path = output_dir / "entity_manifest.json"
         with open(manifest_path, "w") as f:
             json.dump(entity_manifest, f, indent=2)
 
-        # Log every insert
         for entity in entity_manifest.get("entities", []):
             self.audit.log("insert", {
                 "entity_id": entity["id"],
@@ -86,21 +74,19 @@ class CADShield(PipelinePhase):
                 "manifest": entity_manifest,
                 "healing": healing,
                 "extraction": extraction,
-                "crs": context.crs,
-                "stats": context.stats,
-                "classification": context.classification,
-                "input_hash": context.input_hash,
+                "crs": context.get("crs"),
+                "stats": context.get("stats"),
+                "classification": context.get("classification"),
+                "input_hash": context.get("input_hash"),
             },
             output_files=[dxf_path, manifest_path],
         )
 
     def _heal_geometry(self, extraction: ExtractionResult) -> HealingReport:
-        """Validate and heal geometry before CAD insertion."""
         report = HealingReport()
         close_tol = self.healing_cfg.get("close_tolerance", 0.001)
         degen_tol = self.healing_cfg.get("degenerate_face_threshold", 0.0001)
 
-        # Check DTM faces
         if extraction.dtm_faces is not None:
             report.input_entity_count += len(extraction.dtm_faces)
             for i, face in enumerate(extraction.dtm_faces):
@@ -114,7 +100,6 @@ class CADShield(PipelinePhase):
                 else:
                     report.passed_count += 1
 
-        # Check polylines (breaklines, contours, curbs, wires)
         polyline_sets = [
             ("breaklines", extraction.breaklines),
             ("contours_minor", extraction.contours_minor),
@@ -130,19 +115,14 @@ class CADShield(PipelinePhase):
                     report.quarantined_count += 1
                     report.issues.append(f"{name}[{i}]: fewer than 2 vertices")
                     continue
-
-                # Check for duplicate consecutive vertices
                 diffs = np.linalg.norm(np.diff(line[:, :2], axis=0), axis=1)
                 dupes = np.sum(diffs < close_tol)
                 if dupes > 0:
                     report.healed_count += 1
-                    report.issues.append(
-                        f"{name}[{i}]: removed {dupes} duplicate vertices"
-                    )
+                    report.issues.append(f"{name}[{i}]: removed {dupes} duplicate vertices")
                 else:
                     report.passed_count += 1
 
-        # Check polygons (buildings, hardscape, occlusion zones)
         polygon_sets = [
             ("buildings", extraction.building_footprints),
             ("hardscape", extraction.hardscape_polygons),
@@ -156,7 +136,6 @@ class CADShield(PipelinePhase):
                     report.quarantined_count += 1
                     report.issues.append(f"{name}[{i}]: fewer than 3 vertices")
                 else:
-                    # Check if closed
                     if np.linalg.norm(poly[0] - poly[-1]) > close_tol:
                         report.healed_count += 1
                     else:
@@ -165,7 +144,6 @@ class CADShield(PipelinePhase):
         return report
 
     def _write_dxf(self, extraction: ExtractionResult, path: Path) -> dict:
-        """Write extraction results to DXF with proper layer mapping."""
         try:
             import ezdxf
             return self._write_dxf_ezdxf(extraction, path)
@@ -173,20 +151,19 @@ class CADShield(PipelinePhase):
             return self._write_dxf_manual(extraction, path)
 
     def _write_dxf_ezdxf(self, extraction: ExtractionResult, path: Path) -> dict:
-        """Write DXF using ezdxf library."""
         import ezdxf
 
         doc = ezdxf.new("R2018")
         msp = doc.modelspace()
         entities = []
 
-        # Create layers
         for layer_name in self.layer_map.values():
             doc.layers.add(layer_name)
 
-        # DTM as 3DFACE entities
         if extraction.dtm_vertices is not None and extraction.dtm_faces is not None:
             layer = self.layer_map.get("ground_surface", "TOTaLi-SURV-DTM-DRAFT")
+            if layer not in [l.dxf.name for l in doc.layers]:
+                doc.layers.add(layer)
             for face in extraction.dtm_faces:
                 v = extraction.dtm_vertices[face]
                 entity_id = self._entity_id()
@@ -195,14 +172,13 @@ class CADShield(PipelinePhase):
                         [tuple(v[0]), tuple(v[1]), tuple(v[2]), tuple(v[2])],
                         dxfattribs={"layer": layer},
                     )
-                    entities.append(self._entity_record(
-                        entity_id, "3DFACE", layer, v
-                    ))
+                    entities.append(self._entity_record(entity_id, "3DFACE", layer, v))
                 except Exception:
                     pass
 
-        # Breaklines as POLYLINE
         layer = self.layer_map.get("breaklines", "TOTaLi-SURV-BRKLN-DRAFT")
+        if layer not in [l.dxf.name for l in doc.layers]:
+            doc.layers.add(layer)
         for line in extraction.breaklines:
             entity_id = self._entity_id()
             try:
@@ -214,12 +190,13 @@ class CADShield(PipelinePhase):
             except Exception:
                 pass
 
-        # Contours
         for contour_list, layer_key in [
             (extraction.contours_minor, "contours_minor"),
             (extraction.contours_index, "contours_index"),
         ]:
             layer = self.layer_map.get(layer_key, f"TOTaLi-SURV-CONT-{layer_key.upper()}-DRAFT")
+            if layer not in [l.dxf.name for l in doc.layers]:
+                doc.layers.add(layer)
             for seg in contour_list:
                 entity_id = self._entity_id()
                 try:
@@ -231,20 +208,22 @@ class CADShield(PipelinePhase):
                 except Exception:
                     pass
 
-        # Building footprints
         layer = self.layer_map.get("buildings", "TOTaLi-PLAN-BLDG-DRAFT")
+        if layer not in [l.dxf.name for l in doc.layers]:
+            doc.layers.add(layer)
         for poly in extraction.building_footprints:
             entity_id = self._entity_id()
             try:
                 pts = [tuple(p) for p in poly]
-                pts.append(pts[0])  # close polygon
+                pts.append(pts[0])
                 msp.add_lwpolyline(pts, close=True, dxfattribs={"layer": layer})
                 entities.append(self._entity_record(entity_id, "POLYGON", layer, poly))
             except Exception:
                 pass
 
-        # Curbs
         layer = self.layer_map.get("curbs", "TOTaLi-PLAN-CURB-DRAFT")
+        if layer not in [l.dxf.name for l in doc.layers]:
+            doc.layers.add(layer)
         for line in extraction.curb_lines:
             entity_id = self._entity_id()
             try:
@@ -256,8 +235,9 @@ class CADShield(PipelinePhase):
             except Exception:
                 pass
 
-        # Wire
         layer = self.layer_map.get("wire", "TOTaLi-PLAN-WIRE-DRAFT")
+        if layer not in [l.dxf.name for l in doc.layers]:
+            doc.layers.add(layer)
         for line in extraction.wire_lines:
             entity_id = self._entity_id()
             try:
@@ -269,8 +249,9 @@ class CADShield(PipelinePhase):
             except Exception:
                 pass
 
-        # Occlusion zones
         layer = self.layer_map.get("occlusion_zones", "TOTaLi-QA-OCCLUSION")
+        if layer not in [l.dxf.name for l in doc.layers]:
+            doc.layers.add(layer)
         for poly in extraction.occlusion_zones:
             entity_id = self._entity_id()
             try:
@@ -291,14 +272,11 @@ class CADShield(PipelinePhase):
         }
 
     def _write_dxf_manual(self, extraction: ExtractionResult, path: Path) -> dict:
-        """Minimal DXF writer fallback when ezdxf is not available."""
         entities = []
         lines = [
             "0", "SECTION", "2", "HEADER", "0", "ENDSEC",
             "0", "SECTION", "2", "ENTITIES",
         ]
-
-        # Write breaklines as LINE entities
         layer = self.layer_map.get("breaklines", "TOTaLi-SURV-BRKLN-DRAFT")
         for brk in extraction.breaklines:
             for i in range(len(brk) - 1):
@@ -311,12 +289,9 @@ class CADShield(PipelinePhase):
                     "11", str(p1[0]), "21", str(p1[1]), "31", str(p1[2]),
                 ])
                 entities.append(self._entity_record(entity_id, "LINE", layer, brk))
-
         lines.extend(["0", "ENDSEC", "0", "EOF"])
-
         with open(path, "w") as f:
             f.write("\n".join(lines))
-
         return {
             "format": "dxf",
             "path": str(path),
@@ -330,7 +305,6 @@ class CADShield(PipelinePhase):
     def _entity_record(
         self, entity_id: str, entity_type: str, layer: str, geometry
     ) -> dict:
-        """Create an entity record for the manifest / audit trail."""
         geo_bytes = geometry.tobytes() if isinstance(geometry, np.ndarray) else str(geometry).encode()
         return {
             "id": entity_id,
