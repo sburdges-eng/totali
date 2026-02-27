@@ -1,0 +1,71 @@
+--- totali/extraction/extractor.py
++++ totali/extraction/extractor.py
+@@ -282,17 +282,17 @@
+         """Extract building footprints using alpha shapes / convex hulls."""
+         min_area = self.plan_cfg.get("min_building_area_sqft", 100.0)
+
+-        # Simple clustering by XY proximity
+-        """Extract building footprints using alpha shapes / convex hulls."""
+-        min_area = self.plan_cfg.get("min_building_area_sqft", 100.0)
+-
+         # Simple clustering by XY proximity
+         clusters = self._cluster_points_2d(pts, radius=5.0)
+         footprints = []
+
+         for cluster_pts in clusters:
+             if len(cluster_pts) < 4:
+                 continue
++            try:
++                hull = ConvexHull(cluster_pts[:, :2])
++                area = hull.volume  # 2D ConvexHull.volume = area
++                if area >= min_area:
++                    hull_pts = cluster_pts[hull.vertices, :2]
+                     footprints.append(hull_pts)
+             except (QhullError, ValueError) as e:
+                 self.audit.log("warning", {
+@@ -301,7 +301,6 @@
+                     "cluster_size": len(cluster_pts)
+                 })
+                 continue
+-                continue
+
+         return footprints
+
+@@ -338,10 +337,13 @@
+         for cluster_pts in clusters:
+             if len(cluster_pts) < 4:
+                 continue
++            try:
++                hull = ConvexHull(cluster_pts[:, :2])
++                hull_pts = cluster_pts[hull.vertices, :2]
++                polygons.append(hull_pts)
+             except (QhullError, ValueError) as e:
+                 self.audit.log("warning", {
+-                    "phase": "extract_building_footprints",
++                    "phase": "extract_polygonal_features",
+                     "message": f"ConvexHull failed: {str(e)}",
+                     "cluster_size": len(cluster_pts)
+                 })
+-                continue
+                 continue
+
+         return polygons
+@@ -354,10 +356,13 @@
+         for cluster_pts in clusters:
+             if len(cluster_pts) < 3:
+                 continue
++            try:
++                hull = ConvexHull(cluster_pts[:, :2])
++                hull_pts = cluster_pts[hull.vertices, :2]
++                zones.append(hull_pts)
+             except (QhullError, ValueError) as e:
+                 self.audit.log("warning", {
+-                    "phase": "extract_building_footprints",
++                    "phase": "build_occlusion_zones",
+                     "message": f"ConvexHull failed: {str(e)}",
+                     "cluster_size": len(cluster_pts)
+                 })
+-                continue
+                 continue
+
+         return zones

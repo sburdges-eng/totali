@@ -11,7 +11,7 @@ from pathlib import Path
 from typing import Optional
 
 import numpy as np
-from scipy.spatial import Delaunay
+from scipy.spatial import Delaunay, ConvexHull, QhullError
 from scipy.ndimage import uniform_filter1d
 
 from totali.pipeline.models import (
@@ -334,11 +334,6 @@ class DeterministicExtractor(PipelinePhase):
         """Extract building footprints using alpha shapes / convex hulls."""
         min_area = self.plan_cfg.get("min_building_area_sqft", 100.0)
 
-        try:
-            from scipy.spatial import ConvexHull
-        except ImportError:
-            return []
-
         # Simple clustering by XY proximity
         clusters = self._cluster_points_2d(pts, radius=5.0)
         footprints = []
@@ -352,7 +347,12 @@ class DeterministicExtractor(PipelinePhase):
                 if area >= min_area:
                     hull_pts = cluster_pts[hull.vertices, :2]
                     footprints.append(hull_pts)
-            except Exception:
+            except (QhullError, ValueError) as e:
+                self.audit.log("warning", {
+                    "phase": "extract_building_footprints",
+                    "message": f"ConvexHull failed: {str(e)}",
+                    "cluster_size": len(cluster_pts)
+                })
                 continue
 
         return footprints
@@ -389,11 +389,15 @@ class DeterministicExtractor(PipelinePhase):
             if len(cluster_pts) < 4:
                 continue
             try:
-                from scipy.spatial import ConvexHull
                 hull = ConvexHull(cluster_pts[:, :2])
                 hull_pts = cluster_pts[hull.vertices, :2]
                 polygons.append(hull_pts)
-            except Exception:
+            except (QhullError, ValueError) as e:
+                self.audit.log("warning", {
+                    "phase": "extract_polygonal_features",
+                    "message": f"ConvexHull failed: {str(e)}",
+                    "cluster_size": len(cluster_pts)
+                })
                 continue
 
         return polygons
@@ -407,11 +411,15 @@ class DeterministicExtractor(PipelinePhase):
             if len(cluster_pts) < 3:
                 continue
             try:
-                from scipy.spatial import ConvexHull
                 hull = ConvexHull(cluster_pts[:, :2])
                 hull_pts = cluster_pts[hull.vertices, :2]
                 zones.append(hull_pts)
-            except Exception:
+            except (QhullError, ValueError) as e:
+                self.audit.log("warning", {
+                    "phase": "build_occlusion_zones",
+                    "message": f"ConvexHull failed: {str(e)}",
+                    "cluster_size": len(cluster_pts)
+                })
                 continue
 
         return zones
