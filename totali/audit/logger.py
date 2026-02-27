@@ -21,7 +21,12 @@ class AuditLogger:
         hash_algo: str = "sha256",
     ):
         self.log_dir = Path(log_dir)
-        self.log_dir.mkdir(parents=True, exist_ok=True)
+        self.log_dir.mkdir(mode=0o700, parents=True, exist_ok=True)
+        try:
+            os.chmod(self.log_dir, 0o700)
+        except OSError:
+            # Best effort on filesystems that may not support chmod.
+            pass
         self.project_id = project_id
         self.hash_algo = hash_algo
         self.log_path = self.log_dir / f"{project_id}_{datetime.now().strftime('%Y%m%d_%H%M%S')}.jsonl"
@@ -48,9 +53,18 @@ class AuditLogger:
         record["hash"] = record_hash
         self._prev_hash = record_hash
 
-        # Append to JSONL
-        with open(self.log_path, "a") as f:
+        # Append to JSONL with restrictive perms on creation.
+        fd = os.open(
+            self.log_path,
+            os.O_WRONLY | os.O_CREAT | os.O_APPEND,
+            0o600,
+        )
+        with os.fdopen(fd, "a", encoding="utf-8") as f:
             f.write(json.dumps(record, default=str) + "\n")
+        try:
+            os.chmod(self.log_path, 0o600)
+        except OSError:
+            pass
 
     def verify_chain(self) -> tuple[bool, list]:
         """Verify the integrity of the audit log hash chain."""
