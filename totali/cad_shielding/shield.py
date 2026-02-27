@@ -188,11 +188,6 @@ class CADShield(PipelinePhase):
         except Exception:
             pass
 
-    def _add_closed_lwpolyline(self, msp, poly, layer: str):
-        pts = [tuple(p) for p in poly]
-        pts.append(pts[0])
-        msp.add_lwpolyline(pts, close=True, dxfattribs={"layer": layer})
-
     def _write_dxf_ezdxf(self, extraction: ExtractionResult, path: Path) -> dict:
         """Write DXF using ezdxf library."""
         import ezdxf
@@ -247,9 +242,11 @@ class CADShield(PipelinePhase):
         # Building footprints
         layer = self.layer_map.get("buildings", "TOTaLi-PLAN-BLDG-DRAFT")
         for poly in extraction.building_footprints:
+            pts = [tuple(p) for p in poly]
+            pts.append(pts[0])  # close polygon
             self._safe_add_entity(
                 entities, "POLYGON", layer, poly,
-                lambda poly=poly, layer=layer: self._add_closed_lwpolyline(msp, poly, layer)
+                lambda: msp.add_lwpolyline(pts, close=True, dxfattribs={"layer": layer})
             )
 
         # Curbs
@@ -277,9 +274,11 @@ class CADShield(PipelinePhase):
         # Occlusion zones
         layer = self.layer_map.get("occlusion_zones", "TOTaLi-QA-OCCLUSION")
         for poly in extraction.occlusion_zones:
+            pts = [tuple(p) for p in poly]
+            pts.append(pts[0])
             self._safe_add_entity(
                 entities, "OCCLUSION_ZONE", layer, poly,
-                lambda poly=poly, layer=layer: self._add_closed_lwpolyline(msp, poly, layer)
+                lambda: msp.add_lwpolyline(pts, close=True, dxfattribs={"layer": layer})
             )
 
         doc.saveas(str(path))
