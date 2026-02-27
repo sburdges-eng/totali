@@ -14,11 +14,18 @@ geodetic:
     - "EPSG:2233"   # NAD83 Colorado South (ftUS)
     - "EPSG:6428"   # NAD83(2011) Colorado North (ftUS)
     - "EPSG:6430"   # NAD83(2011) Colorado Central (ftUS)
+    - "EPSG:6432"   # NAD83(2011) Colorado South (ftUS)
   required_epoch: "2010.0"
   geoid_model: "GEOID18"
   unit_tolerance_ft: 0.01
   reject_on_mixed_datum: true
-  reject_on_missing_crs: true
+  reject_on_missing_crs: false
+  internal_metric_standardization: false
+  crs_inference:
+    enabled: true
+    confidence_threshold: 0.8
+    quarantine_ui_port: 5050
+    auto_assign_high_confidence: true
   elevation_unit: "US_survey_foot"
 
 # Phase 2: ML Segmentation
@@ -71,7 +78,12 @@ cad_shielding:
   geometry_healing:
     close_tolerance: 0.001
     degenerate_face_threshold: 0.0001
+    snap_tolerance: 0.0001
     self_intersection_check: true
+    repair_self_intersection: true
+    weld_vertices: true
+    remove_duplicates: true
+    close_polygons: true
   layer_mapping:
     ground_surface: "TOTaLi-SURV-DTM-DRAFT"
     breaklines: "TOTaLi-SURV-BRKLN-DRAFT"

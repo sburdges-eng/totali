@@ -14,36 +14,46 @@ from typing import Optional
 from totali.pipeline.models import (
     PhaseResult, GeometryStatus, LintItem, OcclusionType
 )
+from totali.pipeline.base_phase import PipelinePhase
+from totali.pipeline.context import PipelineContext
 from totali.audit.logger import AuditLogger
 
 
-class SurveyorLinter:
+class SurveyorLinter(PipelinePhase):
     def __init__(self, config: dict, audit: AuditLogger):
-        self.config = config
-        self.audit = audit
+        super().__init__(config, audit)
         self.ghost_opacity = config.get("ghost_opacity", 0.4)
         self.flag_colors = config.get("flag_colors", {})
         self.auto_promote = False  # HARDCODED FALSE – never auto-promote
         self.require_pls = config.get("require_pls_signature", True)
 
-    def run(self, context: dict) -> PhaseResult:
-        manifest = context.get("manifest", {})
-        extraction = context.get("extraction")
-        classification = context.get("classification")
-        output_dir = Path(context.get("output_dir", "output"))
+    def validate_inputs(self, context: PipelineContext) -> tuple[bool, list[str]]:
+        errors: list[str] = []
+        if context.manifest is None:
+            errors.append("manifest missing; run shield phase first")
+        return len(errors) == 0, errors
 
-        entities = manifest.get("entities", [])
+    def run(self, context: PipelineContext) -> PhaseResult:
+        manifest = context.manifest if isinstance(context.manifest, dict) else {}
+        extraction = context.extraction
+        classification = context.classification
+        output_dir = Path(context.output_dir)
+
+        raw_entities = manifest.get("entities")
+        entities = raw_entities if isinstance(raw_entities, list) else []
 
         # Build lint items from manifest entities
         lint_items = []
         for entity in entities:
+            if not isinstance(entity, dict):
+                continue
             confidence = self._estimate_confidence(entity, classification)
             occlusion = self._check_occlusion(entity, extraction)
 
             item = LintItem(
-                item_id=entity["id"],
-                geometry_type=entity["type"],
-                layer=entity["layer"],
+                item_id=entity.get("id", ""),
+                geometry_type=entity.get("type", "UNKNOWN"),
+                layer=entity.get("layer", ""),
                 status=GeometryStatus.DRAFT,
                 confidence=confidence,
                 occlusion=occlusion,
@@ -111,6 +121,7 @@ class SurveyorLinter:
         medium = sum(1 for i in items if 0.50 <= i.confidence < 0.75)
         low = sum(1 for i in items if i.confidence < 0.50)
         occluded = sum(1 for i in items if i.occlusion != OcclusionType.NONE)
+        qa_flags = getattr(extraction, "qa_flags", []) or []
 
         report = {
             "generated": datetime.now(timezone.utc).isoformat(),
@@ -130,7 +141,7 @@ class SurveyorLinter:
                     GeometryStatus.CERTIFIED.value: 0,
                 },
             },
-            "qa_flags": extraction.qa_flags if extraction else [],
+            "qa_flags": qa_flags,
             "items": [
                 {
                     "id": item.item_id,
@@ -181,9 +192,12 @@ class SurveyorLinter:
 
         if extraction and extraction.qa_flags:
             for flag in extraction.qa_flags:
-                lines.append(
-                    f"  [{flag['severity'].upper()}] {flag['message']}"
-                )
+                if not isinstance(flag, dict):
+                    lines.append(f"  [INFO] {flag}")
+                    continue
+                severity = (flag.get("severity") or "info").upper()
+                message = flag.get("message") or ""
+                lines.append(f"  [{severity}] {message}")
         else:
             lines.append("  No QA flags.")
 
@@ -282,7 +296,7 @@ class SurveyorLinter:
         for item in accepted:
             item.status = GeometryStatus.CERTIFIED
             # Remove -DRAFT suffix from layer name
-            if item.layer.endswith("-DRAFT"):
+            if item.layer and item.layer.endswith("-DRAFT"):
                 item.layer = item.layer[:-6]
 
         audit.log("certify", {

@@ -12,27 +12,48 @@ from typing import Optional
 
 import numpy as np
 from scipy.spatial import Delaunay
-from scipy.ndimage import uniform_filter1d
 
 from totali.pipeline.models import (
-    PhaseResult, ExtractionResult, ClassificationResult, OcclusionType
+    PhaseResult, ExtractionResult, ClassificationResult
 )
+from totali.pipeline.base_phase import PipelinePhase
+from totali.pipeline.context import PipelineContext
 from totali.audit.logger import AuditLogger
 
 
-class DeterministicExtractor:
+class DeterministicExtractor(PipelinePhase):
     def __init__(self, config: dict, audit: AuditLogger):
-        self.config = config
-        self.audit = audit
+        super().__init__(config, audit)
         self.dtm_cfg = config.get("dtm", {})
         self.brk_cfg = config.get("breaklines", {})
         self.cnt_cfg = config.get("contours", {})
         self.plan_cfg = config.get("planimetrics", {})
+        class_mapping = config.get("class_mapping", {})
+        self.ground_class_id = int(class_mapping.get("ground", 2))
+        self.building_class_id = int(class_mapping.get("building", 6))
+        self.curb_class_id = int(class_mapping.get("curb", 64))
+        self.hardscape_class_id = int(class_mapping.get("hardscape", 65))
+        wire_ids = class_mapping.get("wire")
+        if isinstance(wire_ids, (list, tuple, set)):
+            self.wire_class_ids = [int(v) for v in wire_ids]
+        else:
+            self.wire_class_ids = [
+                int(class_mapping.get("wire_primary", 13)),
+                int(class_mapping.get("wire_secondary", 14)),
+            ]
 
-    def run(self, context: dict) -> PhaseResult:
-        xyz = context.get("points_xyz")
-        classification: ClassificationResult = context.get("classification")
-        output_dir = Path(context.get("output_dir", "output"))
+    def validate_inputs(self, context: PipelineContext) -> tuple[bool, list[str]]:
+        errors: list[str] = []
+        if context.points_xyz is None:
+            errors.append("points_xyz missing; run geodetic phase first")
+        if context.classification is None:
+            errors.append("classification missing; run segment phase first")
+        return len(errors) == 0, errors
+
+    def run(self, context: PipelineContext) -> PhaseResult:
+        xyz = context.points_xyz
+        classification: ClassificationResult | None = context.classification
+        output_dir = Path(context.output_dir)
 
         if xyz is None or classification is None:
             return PhaseResult(
@@ -41,106 +62,108 @@ class DeterministicExtractor:
             )
 
         result = ExtractionResult()
+        try:
+            # Extract ground points for DTM
+            ground_mask = classification.labels == self.ground_class_id
+            ground_pts = xyz[ground_mask]
 
-        # Extract ground points for DTM
-        ground_mask = classification.labels == 2
-        ground_pts = xyz[ground_mask]
+            if len(ground_pts) < 10:
+                return PhaseResult(
+                    phase="extract", success=False,
+                    message=f"Insufficient ground points: {len(ground_pts)}"
+                )
 
-        if len(ground_pts) < 10:
-            return PhaseResult(
-                phase="extract", success=False,
-                message=f"Insufficient ground points: {len(ground_pts)}"
+            self.audit.log("extract", {
+                "total_points": len(xyz),
+                "ground_points": len(ground_pts),
+            })
+
+            # 1. DTM / TIN generation
+            result.dtm_vertices, result.dtm_faces, dtm_metrics = self._build_dtm(ground_pts)
+            result.error_metrics["dtm"] = dtm_metrics
+
+            # 2. Breakline extraction
+            result.breaklines, brk_metrics = self._extract_breaklines(
+                ground_pts, result.dtm_vertices, result.dtm_faces
             )
+            result.error_metrics["breaklines"] = brk_metrics
 
-        self.audit.log("extract", {
-            "total_points": len(xyz),
-            "ground_points": len(ground_pts),
-        })
+            # 3. Contour generation
+            result.contours_minor, result.contours_index, cnt_metrics = self._generate_contours(
+                result.dtm_vertices, result.dtm_faces
+            )
+            result.error_metrics["contours"] = cnt_metrics
 
-        # 1. DTM / TIN generation
-        result.dtm_vertices, result.dtm_faces, dtm_metrics = self._build_dtm(ground_pts)
-        result.error_metrics["dtm"] = dtm_metrics
+            # 4. Planimetric features
+            building_mask = classification.labels == self.building_class_id
+            curb_mask = classification.labels == self.curb_class_id
+            wire_mask = np.isin(classification.labels, self.wire_class_ids)
+            hardscape_mask = classification.labels == self.hardscape_class_id
 
-        # 2. Breakline extraction
-        result.breaklines, brk_metrics = self._extract_breaklines(
-            ground_pts, result.dtm_vertices, result.dtm_faces
-        )
-        result.error_metrics["breaklines"] = brk_metrics
+            if building_mask.any():
+                result.building_footprints = self._extract_building_footprints(xyz[building_mask])
+            if curb_mask.any():
+                result.curb_lines = self._extract_linear_features(xyz[curb_mask], "curb")
+            if wire_mask.any():
+                result.wire_lines = self._extract_linear_features(xyz[wire_mask], "wire")
+            if hardscape_mask.any():
+                result.hardscape_polygons = self._extract_polygonal_features(xyz[hardscape_mask])
 
-        # 3. Contour generation
-        result.contours_minor, result.contours_index, cnt_metrics = self._generate_contours(
-            result.dtm_vertices, result.dtm_faces
-        )
-        result.error_metrics["contours"] = cnt_metrics
+            # 5. Occlusion zones
+            if classification.occlusion_mask is not None:
+                occluded = xyz[classification.occlusion_mask]
+                if len(occluded) > 0:
+                    result.occlusion_zones = self._build_occlusion_zones(occluded)
 
-        # 4. Planimetric features
-        building_mask = classification.labels == 6
-        curb_mask = classification.labels == 64
-        wire_mask = np.isin(classification.labels, [13, 14])
-        hardscape_mask = classification.labels == 65
+            # 6. QA flags
+            result.qa_flags = self._generate_qa_flags(result, classification)
 
-        if building_mask.any():
-            result.building_footprints = self._extract_building_footprints(xyz[building_mask])
-        if curb_mask.any():
-            result.curb_lines = self._extract_linear_features(xyz[curb_mask], "curb")
-        if wire_mask.any():
-            result.wire_lines = self._extract_linear_features(xyz[wire_mask], "wire")
-        if hardscape_mask.any():
-            result.hardscape_polygons = self._extract_polygonal_features(xyz[hardscape_mask])
+            # Write extraction report
+            report_path = output_dir / "extraction_report.json"
+            report = {
+                "dtm_vertices": len(result.dtm_vertices) if result.dtm_vertices is not None else 0,
+                "dtm_faces": len(result.dtm_faces) if result.dtm_faces is not None else 0,
+                "breaklines": len(result.breaklines),
+                "contours_minor": len(result.contours_minor),
+                "contours_index": len(result.contours_index),
+                "buildings": len(result.building_footprints),
+                "curbs": len(result.curb_lines),
+                "wires": len(result.wire_lines),
+                "occlusion_zones": len(result.occlusion_zones),
+                "qa_flags": len(result.qa_flags),
+                "error_metrics": {
+                    k: {kk: round(vv, 6) if isinstance(vv, float) else vv for kk, vv in v.items()}
+                    for k, v in result.error_metrics.items()
+                },
+            }
+            with open(report_path, "w") as f:
+                json.dump(report, f, indent=2)
 
-        # 5. Occlusion zones
-        if classification.occlusion_mask is not None:
-            occluded = xyz[classification.occlusion_mask]
-            if len(occluded) > 0:
-                result.occlusion_zones = self._build_occlusion_zones(occluded)
+            self.audit.log("extract", {
+                "dtm_faces": report["dtm_faces"],
+                "breaklines": report["breaklines"],
+                "contours": report["contours_minor"] + report["contours_index"],
+                "qa_flags": report["qa_flags"],
+            })
 
-        # 6. QA flags
-        result.qa_flags = self._generate_qa_flags(result, classification)
-
-        # Write extraction report
-        report_path = output_dir / "extraction_report.json"
-        report = {
-            "dtm_vertices": len(result.dtm_vertices) if result.dtm_vertices is not None else 0,
-            "dtm_faces": len(result.dtm_faces) if result.dtm_faces is not None else 0,
-            "breaklines": len(result.breaklines),
-            "contours_minor": len(result.contours_minor),
-            "contours_index": len(result.contours_index),
-            "buildings": len(result.building_footprints),
-            "curbs": len(result.curb_lines),
-            "wires": len(result.wire_lines),
-            "occlusion_zones": len(result.occlusion_zones),
-            "qa_flags": len(result.qa_flags),
-            "error_metrics": {
-                k: {kk: round(vv, 6) if isinstance(vv, float) else vv for kk, vv in v.items()}
-                for k, v in result.error_metrics.items()
-            },
-        }
-        with open(report_path, "w") as f:
-            json.dump(report, f, indent=2)
-
-        self.audit.log("extract", {
-            "dtm_faces": report["dtm_faces"],
-            "breaklines": report["breaklines"],
-            "contours": report["contours_minor"] + report["contours_index"],
-            "qa_flags": report["qa_flags"],
-        })
-
-        return PhaseResult(
-            phase="extract",
-            success=True,
-            message=f"Extracted DTM ({report['dtm_faces']} faces), "
-                    f"{report['breaklines']} breaklines, "
-                    f"{report['contours_minor']+report['contours_index']} contours",
-            data={
-                "extraction": result,
-                "crs": context.get("crs"),
-                "stats": context.get("stats"),
-                "classification": classification,
-                "points_xyz": xyz,
-                "input_hash": context.get("input_hash"),
-            },
-            output_files=[report_path],
-        )
+            return PhaseResult(
+                phase="extract",
+                success=True,
+                message=f"Extracted DTM ({report['dtm_faces']} faces), "
+                        f"{report['breaklines']} breaklines, "
+                        f"{report['contours_minor']+report['contours_index']} contours",
+                data={
+                    "extraction": result,
+                    "crs": context.crs,
+                    "stats": context.stats,
+                    "classification": classification,
+                    "points_xyz": xyz,
+                    "input_hash": context.input_hash,
+                },
+                output_files=[report_path],
+            )
+        except Exception as e:
+            raise
 
     def _build_dtm(self, ground_pts: np.ndarray) -> tuple:
         """Build Delaunay TIN from ground points with edge length filtering."""
@@ -269,8 +292,18 @@ class DeterministicExtractor:
         if len(faces) == 0:
             return [], [], {"count": 0}
 
-        z_min = vertices[:, 2].min()
-        z_max = vertices[:, 2].max()
+        z_min = float(vertices[:, 2].min())
+        z_max = float(vertices[:, 2].max())
+
+        # Guard against invalid config: avoid ZeroDivisionError and np.arange(..., 0)
+        if interval <= 0 or index_interval <= 0:
+            return [], [], {
+                "minor_count": 0,
+                "index_count": 0,
+                "elevation_range": [z_min, z_max],
+                "interval": interval,
+                "count": 0,
+            }
 
         minor_contours = []
         index_contours = []

@@ -17,22 +17,42 @@ import numpy as np
 from totali.pipeline.models import (
     PhaseResult, ExtractionResult, HealingReport, GeometryStatus
 )
+from totali.pipeline.base_phase import PipelinePhase
+from totali.pipeline.context import PipelineContext
 from totali.audit.logger import AuditLogger
+from totali.cad_shielding.geometry_healer import GeometryHealer, HealingConfig
 
 
-class CADShield:
+class CADShield(PipelinePhase):
     def __init__(self, config: dict, audit: AuditLogger):
-        self.config = config
-        self.audit = audit
+        super().__init__(config, audit)
         self.format = config.get("format", "dxf")
         self.healing_cfg = config.get("geometry_healing", {})
         self.layer_map = config.get("layer_mapping", {})
         self.timeout = config.get("middleware_timeout_sec", 30)
         self.max_retry = config.get("max_retry", 3)
+        self.healer = GeometryHealer(
+            HealingConfig(
+                close_tolerance=self.healing_cfg.get("close_tolerance", 0.001),
+                degenerate_threshold=self.healing_cfg.get("degenerate_face_threshold", 0.0001),
+                snap_tolerance=self.healing_cfg.get("snap_tolerance", 0.0001),
+                check_self_intersection=self.healing_cfg.get("self_intersection_check", True),
+                repair_self_intersection=self.healing_cfg.get("repair_self_intersection", True),
+                weld_vertices=self.healing_cfg.get("weld_vertices", True),
+                remove_duplicates=self.healing_cfg.get("remove_duplicates", True),
+                close_polygons=self.healing_cfg.get("close_polygons", True),
+            )
+        )
 
-    def run(self, context: dict) -> PhaseResult:
-        extraction: ExtractionResult = context.get("extraction")
-        output_dir = Path(context.get("output_dir", "output"))
+    def validate_inputs(self, context: PipelineContext) -> tuple[bool, list[str]]:
+        errors: list[str] = []
+        if context.extraction is None:
+            errors.append("extraction missing; run extract phase first")
+        return len(errors) == 0, errors
+
+    def run(self, context: PipelineContext) -> PhaseResult:
+        extraction: ExtractionResult | None = context.extraction
+        output_dir = Path(context.output_dir)
 
         if extraction is None:
             return PhaseResult(
@@ -42,7 +62,6 @@ class CADShield:
 
         # Geometry healing pass
         healing = self._heal_geometry(extraction)
-
         self.audit.log("heal", {
             "input_entities": healing.input_entity_count,
             "healed": healing.healed_count,
@@ -79,10 +98,10 @@ class CADShield:
                 "manifest": entity_manifest,
                 "healing": healing,
                 "extraction": extraction,
-                "crs": context.get("crs"),
-                "stats": context.get("stats"),
-                "classification": context.get("classification"),
-                "input_hash": context.get("input_hash"),
+                "crs": context.crs,
+                "stats": context.stats,
+                "classification": context.classification,
+                "input_hash": context.input_hash,
             },
             output_files=[dxf_path, manifest_path],
         )
@@ -90,22 +109,28 @@ class CADShield:
     def _heal_geometry(self, extraction: ExtractionResult) -> HealingReport:
         """Validate and heal geometry before CAD insertion."""
         report = HealingReport()
-        close_tol = self.healing_cfg.get("close_tolerance", 0.001)
         degen_tol = self.healing_cfg.get("degenerate_face_threshold", 0.0001)
 
-        # Check DTM faces
-        if extraction.dtm_faces is not None:
+        # Check DTM faces (require both vertices and faces to avoid TypeError)
+        if extraction.dtm_vertices is not None and extraction.dtm_faces is not None:
             report.input_entity_count += len(extraction.dtm_faces)
-            for i, face in enumerate(extraction.dtm_faces):
-                verts = extraction.dtm_vertices[face]
-                area = 0.5 * np.linalg.norm(
-                    np.cross(verts[1] - verts[0], verts[2] - verts[0])
-                )
-                if area < degen_tol:
-                    report.quarantined_count += 1
-                    report.issues.append(f"Degenerate DTM face {i}: area={area:.8f}")
-                else:
-                    report.passed_count += 1
+            healed_verts, healed_faces, mesh_issues = self.healer.heal_mesh(
+                extraction.dtm_vertices, extraction.dtm_faces, "dtm_mesh"
+            )
+            report.issues.extend(mesh_issues)
+            if healed_verts is None or healed_faces is None or len(healed_faces) == 0:
+                report.quarantined_count += len(extraction.dtm_faces)
+            else:
+                extraction.dtm_vertices = healed_verts
+                extraction.dtm_faces = healed_faces
+                for i, face in enumerate(healed_faces):
+                    verts = healed_verts[face]
+                    area = 0.5 * np.linalg.norm(np.cross(verts[1] - verts[0], verts[2] - verts[0]))
+                    if area < degen_tol:
+                        report.quarantined_count += 1
+                        report.issues.append(f"Degenerate DTM face {i}: area={area:.8f}")
+                    else:
+                        report.passed_count += 1
 
         # Check polylines (breaklines, contours, curbs, wires)
         polyline_sets = [
@@ -119,19 +144,15 @@ class CADShield:
         for name, lines in polyline_sets:
             for i, line in enumerate(lines):
                 report.input_entity_count += 1
-                if len(line) < 2:
+                healed, issues = self.healer.heal_polyline(line, f"{name}[{i}]")
+                if healed is None:
                     report.quarantined_count += 1
-                    report.issues.append(f"{name}[{i}]: fewer than 2 vertices")
+                    report.issues.extend(issues)
                     continue
-
-                # Check for duplicate consecutive vertices
-                diffs = np.linalg.norm(np.diff(line[:, :2], axis=0), axis=1)
-                dupes = np.sum(diffs < close_tol)
-                if dupes > 0:
+                lines[i] = healed
+                report.issues.extend(issues)
+                if issues:
                     report.healed_count += 1
-                    report.issues.append(
-                        f"{name}[{i}]: removed {dupes} duplicate vertices"
-                    )
                 else:
                     report.passed_count += 1
 
@@ -145,12 +166,14 @@ class CADShield:
         for name, polys in polygon_sets:
             for i, poly in enumerate(polys):
                 report.input_entity_count += 1
-                if len(poly) < 3:
+                healed, issues = self.healer.heal_polygon(poly, f"{name}[{i}]")
+                if healed is None:
                     report.quarantined_count += 1
-                    report.issues.append(f"{name}[{i}]: fewer than 3 vertices")
+                    report.issues.extend(issues)
                 else:
-                    # Check if closed
-                    if np.linalg.norm(poly[0] - poly[-1]) > close_tol:
+                    polys[i] = healed
+                    report.issues.extend(issues)
+                    if issues:
                         report.healed_count += 1
                     else:
                         report.passed_count += 1
@@ -161,8 +184,9 @@ class CADShield:
         """Write extraction results to DXF with proper layer mapping."""
         try:
             import ezdxf
+            ezdxf.new  # verify the module is usable, not a stub
             return self._write_dxf_ezdxf(extraction, path)
-        except ImportError:
+        except (ImportError, AttributeError):
             return self._write_dxf_manual(extraction, path)
 
     def _write_dxf_ezdxf(self, extraction: ExtractionResult, path: Path) -> dict:
@@ -236,6 +260,18 @@ class CADShield:
             except Exception:
                 pass
 
+        # Hardscape polygons
+        layer = self.layer_map.get("hardscape", "TOTaLi-PLAN-HDSC-DRAFT")
+        for poly in extraction.hardscape_polygons:
+            entity_id = self._entity_id()
+            try:
+                pts = [tuple(p) for p in poly]
+                pts.append(pts[0])
+                msp.add_lwpolyline(pts, close=True, dxfattribs={"layer": layer})
+                entities.append(self._entity_record(entity_id, "POLYGON", layer, poly))
+            except Exception:
+                pass
+
         # Curbs
         layer = self.layer_map.get("curbs", "TOTaLi-PLAN-CURB-DRAFT")
         for line in extraction.curb_lines:
@@ -304,6 +340,23 @@ class CADShield:
                     "11", str(p1[0]), "21", str(p1[1]), "31", str(p1[2]),
                 ])
                 entities.append(self._entity_record(entity_id, "LINE", layer, brk))
+
+        # Hardscape as closed LINE loop
+        layer = self.layer_map.get("hardscape", "TOTaLi-PLAN-HDSC-DRAFT")
+        for poly in extraction.hardscape_polygons:
+            n = len(poly)
+            for i in range(n):
+                p0, p1 = poly[i], poly[(i + 1) % n]
+                entity_id = self._entity_id()
+                z0 = str(p0[2]) if len(p0) > 2 else "0"
+                z1 = str(p1[2]) if len(p1) > 2 else "0"
+                lines.extend([
+                    "0", "LINE",
+                    "8", layer,
+                    "10", str(p0[0]), "20", str(p0[1]), "30", z0,
+                    "11", str(p1[0]), "21", str(p1[1]), "31", z1,
+                ])
+                entities.append(self._entity_record(entity_id, "LINE", layer, poly))
 
         lines.extend(["0", "ENDSEC", "0", "EOF"])
 

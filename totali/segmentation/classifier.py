@@ -12,10 +12,12 @@ from typing import Optional
 import numpy as np
 
 from totali.pipeline.models import PhaseResult, ClassificationResult
+from totali.pipeline.base_phase import PipelinePhase
+from totali.pipeline.context import PipelineContext
 from totali.audit.logger import AuditLogger
 
 
-class PointCloudClassifier:
+class PointCloudClassifier(PipelinePhase):
     """
     Classifies raw LiDAR into semantic classes using a trained model.
 
@@ -25,8 +27,7 @@ class PointCloudClassifier:
     """
 
     def __init__(self, config: dict, audit: AuditLogger):
-        self.config = config
-        self.audit = audit
+        super().__init__(config, audit)
         self.model_path = config.get("model_path", "models/point_transformer_v2.onnx")
         self.device = config.get("device", "cpu")
         self.confidence_threshold = config.get("confidence_threshold", 0.75)
@@ -35,6 +36,14 @@ class PointCloudClassifier:
         self.voxel_size = config.get("voxel_size", 0.05)
         self.classes = config.get("classes", {})
         self.session = None
+
+    def validate_inputs(self, context: PipelineContext) -> tuple[bool, list[str]]:
+        errors: list[str] = []
+        if context.points_xyz is None:
+            errors.append("points_xyz missing; run geodetic phase first")
+        if context.las is None:
+            errors.append("las missing; run geodetic phase first")
+        return len(errors) == 0, errors
 
     def _load_model(self):
         """Load ONNX model. Falls back to rule-based if model not found."""
@@ -55,9 +64,9 @@ class PointCloudClassifier:
             self.audit.log("classify", {"warning": "onnxruntime not available, using fallback"})
             return False
 
-    def run(self, context: dict) -> PhaseResult:
-        points_xyz = context.get("points_xyz")
-        las = context.get("las")
+    def run(self, context: PipelineContext) -> PhaseResult:
+        points_xyz = context.points_xyz
+        las = context.las
 
         if points_xyz is None:
             return PhaseResult(
@@ -66,6 +75,13 @@ class PointCloudClassifier:
             )
 
         n_points = len(points_xyz)
+        if n_points == 0:
+            return PhaseResult(
+                phase="segment",
+                success=False,
+                message="No points to classify",
+            )
+
         self.audit.log("classify", {
             "point_count": n_points,
             "model": self.model_path,
@@ -110,9 +126,9 @@ class PointCloudClassifier:
                 "points_xyz": points_xyz,
                 "las": las,
                 "classification": result,
-                "crs": context.get("crs"),
-                "stats": context.get("stats"),
-                "input_hash": context.get("input_hash"),
+                "crs": context.crs,
+                "stats": context.stats,
+                "input_hash": context.input_hash,
             },
         )
 

@@ -830,7 +830,15 @@ def collect_ascii_sections(
 
 
 def parse_ascii_dxf(dxf_path: Path, sample_limit: int, precision: int) -> dict[str, Any]:
-    text = dxf_path.read_text(encoding="utf-8", errors="ignore")
+    raw_bytes = dxf_path.read_bytes()
+    if not raw_bytes:
+        raise ParseError("DXF file is empty or unreadable as ASCII text.")
+    if b"\x00" in raw_bytes:
+        raise ParseError(
+            "DXF file appears to be binary and is not supported by ASCII fallback parser."
+        )
+
+    text = raw_bytes.decode("utf-8", errors="ignore")
     pairs = pairs_from_dxf_text(text)
     if not pairs:
         raise ParseError("DXF file is empty or unreadable as ASCII text.")
@@ -1951,6 +1959,8 @@ def build_topology(entities: list[dict[str, Any]], tolerance: float, precision: 
             end = normalize_point(edge_def.get("end"), precision)
             if not start or not end:
                 continue
+            if point_key(start) == point_key(end):
+                continue
 
             start_node = ensure_node(start)
             end_node = ensure_node(end)
@@ -2118,6 +2128,9 @@ def parse_input(
     sample_limit: int,
     precision: int,
 ) -> tuple[dict[str, Any], dict[str, Any], Path | None]:
+    if not input_path.is_file():
+        raise ParseError(f"Input path is not a file: {input_path}")
+
     suffix = input_path.suffix.lower()
     temp_dir: Path | None = None
     conversion_info: dict[str, Any] = {"used": False}
