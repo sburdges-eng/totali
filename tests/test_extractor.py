@@ -113,12 +113,65 @@ class TestClustering:
             [100, 100, 0], [101, 101, 0],
         ])
         clusters = extractor._cluster_points_2d(pts, radius=5.0)
-        assert len(clusters) >= 1
+        # With radius=5.0, grid_size=10.0.
+        # [0,0], [1,1], [2,2] all map to (0,0)
+        # [100,100], [101,101] both map to (10,10)
+        assert len(clusters) == 2
 
     def test_empty_input(self, extractor):
         pts = np.empty((0, 3))
         clusters = extractor._cluster_points_2d(pts, radius=5.0)
         assert clusters == []
+
+    def test_empty_input_different_shape(self, extractor):
+        pts = np.empty((0, 2))
+        clusters = extractor._cluster_points_2d(pts, radius=5.0)
+        assert clusters == []
+
+    def test_single_point(self, extractor):
+        pts = np.array([[10, 10, 10]])
+        clusters = extractor._cluster_points_2d(pts, radius=1.0)
+        # Single point in a cell doesn't form a cluster (requires >= 2)
+        assert clusters == []
+
+    def test_points_far_apart(self, extractor):
+        pts = np.array([
+            [0, 0, 0],
+            [100, 100, 0],
+            [500, 500, 0]
+        ])
+        clusters = extractor._cluster_points_2d(pts, radius=1.0)
+        # Each in its own grid cell, no clusters
+        assert clusters == []
+
+    def test_grid_boundaries(self, extractor):
+        # grid_size = 2 * radius = 2.0
+        # Boundary at x=2.0
+        # floor(1.9/2.0) = 0
+        # floor(2.0/2.0) = 1
+        pts = np.array([
+            [1.9, 0, 0], [1.95, 0, 0],  # Cell (0,0)
+            [2.0, 0, 0], [2.05, 0, 0]   # Cell (1,0)
+        ])
+        clusters = extractor._cluster_points_2d(pts, radius=1.0)
+        assert len(clusters) == 2
+        # Verify points are split correctly
+        c1_x = [p[0] for p in clusters[0]]
+        c2_x = [p[0] for p in clusters[1]]
+        # Sort them to be deterministic for assertion if needed, though they should be consistent
+        all_x = sorted(c1_x + c2_x)
+        assert all_x == [1.9, 1.95, 2.0, 2.05]
+        assert (max(c1_x) < 2.0 and min(c2_x) >= 2.0) or (max(c2_x) < 2.0 and min(c1_x) >= 2.0)
+
+    def test_preserves_z_coordinates(self, extractor):
+        pts = np.array([
+            [0, 0, 123.456],
+            [0.1, 0.1, 789.012]
+        ])
+        clusters = extractor._cluster_points_2d(pts, radius=5.0)
+        assert len(clusters) == 1
+        assert np.allclose(clusters[0][0], [0, 0, 123.456])
+        assert np.allclose(clusters[0][1], [0.1, 0.1, 789.012])
 
 
 class TestQAFlags:
