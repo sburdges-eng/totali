@@ -2,7 +2,7 @@
 
 import json
 from pathlib import Path
-from unittest.mock import patch
+from unittest.mock import patch, MagicMock
 
 import numpy as np
 import pytest
@@ -40,7 +40,7 @@ def sample_extraction():
     return ExtractionResult(
         dtm_vertices=verts,
         dtm_faces=faces,
-        breaklines=[np.array([[0, 0, 100], [10, 10, 101]])],
+        breaklines=[np.array([[0, 0, 100], [10, 10, 101]]), np.array([[20, 20, 102], [30, 30, 103]])],
         contours_minor=[np.array([[0, 0], [5, 5]])],
         contours_index=[np.array([[0, 0], [10, 10]])],
         building_footprints=[np.array([[0, 0], [10, 0], [10, 10], [0, 10]])],
@@ -114,31 +114,25 @@ class TestEntityRecord:
     def test_record_structure(self, shield):
         geo = np.array([[0, 0, 0], [1, 1, 1]])
         rec = shield._entity_record(
-            "abc123", "POLYLINE", "LAYER-DRAFT", geo,
-            confidence=0.9, rule_engine_passed=True, provenance={"test": "ok"},
+            "abc123", "POLYLINE", "LAYER-DRAFT", geo
         )
         assert rec["id"] == "abc123"
         assert rec["type"] == "POLYLINE"
         assert rec["layer"] == "LAYER-DRAFT"
         assert rec["status"] == GeometryStatus.DRAFT.value
         assert len(rec["source_hash"]) == 16
-        assert rec["confidence"] == 0.9
-        assert rec["rule_engine_passed"] is True
-        assert rec["provenance"] == {"test": "ok"}
 
     def test_source_hash_deterministic(self, shield):
         geo = np.array([[1.0, 2.0, 3.0]])
-        prov = {}
-        r1 = shield._entity_record("a", "LINE", "L", geo, 0.8, True, prov)
-        r2 = shield._entity_record("b", "LINE", "L", geo, 0.8, True, prov)
+        r1 = shield._entity_record("a", "LINE", "L", geo)
+        r2 = shield._entity_record("b", "LINE", "L", geo)
         assert r1["source_hash"] == r2["source_hash"]
 
 
 class TestDXFWriting:
     def test_manual_fallback_writes_file(self, shield, sample_extraction, tmp_path):
         out_path = tmp_path / "test.dxf"
-        ctx = PipelineContext(input_path="/f.las", output_dir=tmp_path, input_hash="x")
-        manifest = shield._write_dxf_manual(sample_extraction, out_path, ctx)
+        manifest = shield._write_dxf_manual(sample_extraction, out_path)
         assert out_path.exists()
         assert manifest["format"] == "dxf"
         assert manifest["entity_count"] >= 0
@@ -149,7 +143,7 @@ class TestDXFWriting:
 class TestPhaseRun:
     @patch("totali.cad_shielding.shield.CADShield._write_dxf")
     def test_run_produces_manifest(self, mock_write, shield, tmp_output, sample_extraction, sample_classification):
-        mock_write.side_effect = lambda ext, path, ctx: shield._write_dxf_manual(ext, path, ctx)
+        mock_write.side_effect = lambda ext, path: shield._write_dxf_manual(ext, path)
         ctx = PipelineContext(
             input_path="/f.las", output_dir=tmp_output,
             extraction=sample_extraction,
@@ -168,7 +162,7 @@ class TestPhaseRun:
 
     @patch("totali.cad_shielding.shield.CADShield._write_dxf")
     def test_run_writes_output_files(self, mock_write, shield, tmp_output, sample_extraction, sample_classification):
-        mock_write.side_effect = lambda ext, path, ctx: shield._write_dxf_manual(ext, path, ctx)
+        mock_write.side_effect = lambda ext, path: shield._write_dxf_manual(ext, path)
         ctx = PipelineContext(
             input_path="/f.las", output_dir=tmp_output,
             extraction=sample_extraction,
@@ -191,7 +185,7 @@ class TestPhaseRun:
 
     @patch("totali.cad_shielding.shield.CADShield._write_dxf")
     def test_all_entities_are_draft(self, mock_write, shield, tmp_output, sample_extraction, sample_classification):
-        mock_write.side_effect = lambda ext, path, ctx: shield._write_dxf_manual(ext, path, ctx)
+        mock_write.side_effect = lambda ext, path: shield._write_dxf_manual(ext, path)
         ctx = PipelineContext(
             input_path="/f.las", output_dir=tmp_output,
             extraction=sample_extraction,
@@ -204,3 +198,34 @@ class TestPhaseRun:
         manifest = result.data["manifest"]
         for entity in manifest.get("entities", []):
             assert entity["status"] == "DRAFT"
+
+class TestDXFExceptionResilience:
+    @patch("ezdxf.new")
+    def test_ezdxf_resilience_breaklines(self, mock_new, shield, sample_extraction):
+        """Verify that an exception in msp.add_polyline3d doesn't stop other entities."""
+        mock_doc = MagicMock()
+        mock_msp = MagicMock()
+        mock_new.return_value = mock_doc
+        mock_doc.modelspace.return_value = mock_msp
+
+        # Configure side effect: raise for the first breakline, succeed for others
+        # sample_extraction has 2 breaklines
+        mock_msp.add_polyline3d.side_effect = [Exception("BOM!"), MagicMock()]
+
+        # We also need to handle other calls if we use the full sample_extraction
+        # or we can use a more targeted extraction.
+        # Targeted extraction for breaklines:
+        ext = ExtractionResult(
+            dtm_vertices=None, dtm_faces=None,
+            breaklines=[np.array([[0,0,0], [1,1,1]]), np.array([[2,2,2], [3,3,3]])],
+            contours_minor=[], contours_index=[],
+            building_footprints=[], curb_lines=[], wire_lines=[],
+            hardscape_polygons=[], occlusion_zones=[]
+        )
+
+        manifest = shield._write_dxf_ezdxf(ext, Path("dummy.dxf"))
+
+        # Should have 1 entity instead of 2
+        assert len(manifest["entities"]) == 1
+        assert manifest["entities"][0]["type"] == "POLYLINE"
+        assert mock_msp.add_polyline3d.call_count == 2
