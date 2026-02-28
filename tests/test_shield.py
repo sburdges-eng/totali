@@ -137,8 +137,7 @@ class TestEntityRecord:
 class TestDXFWriting:
     def test_manual_fallback_writes_file(self, shield, sample_extraction, tmp_path):
         out_path = tmp_path / "test.dxf"
-        ctx = PipelineContext(input_path="/f.las", output_dir=tmp_path, input_hash="x")
-        manifest = shield._write_dxf_manual(sample_extraction, out_path, ctx)
+        manifest = shield._write_dxf_manual(sample_extraction, out_path)
         assert out_path.exists()
         assert manifest["format"] == "dxf"
         assert manifest["entity_count"] >= 0
@@ -149,7 +148,7 @@ class TestDXFWriting:
 class TestPhaseRun:
     @patch("totali.cad_shielding.shield.CADShield._write_dxf")
     def test_run_produces_manifest(self, mock_write, shield, tmp_output, sample_extraction, sample_classification):
-        mock_write.side_effect = lambda ext, path, ctx: shield._write_dxf_manual(ext, path, ctx)
+        mock_write.side_effect = lambda ext, path: shield._write_dxf_manual(ext, path)
         ctx = PipelineContext(
             input_path="/f.las", output_dir=tmp_output,
             extraction=sample_extraction,
@@ -168,7 +167,7 @@ class TestPhaseRun:
 
     @patch("totali.cad_shielding.shield.CADShield._write_dxf")
     def test_run_writes_output_files(self, mock_write, shield, tmp_output, sample_extraction, sample_classification):
-        mock_write.side_effect = lambda ext, path, ctx: shield._write_dxf_manual(ext, path, ctx)
+        mock_write.side_effect = lambda ext, path: shield._write_dxf_manual(ext, path)
         ctx = PipelineContext(
             input_path="/f.las", output_dir=tmp_output,
             extraction=sample_extraction,
@@ -191,7 +190,7 @@ class TestPhaseRun:
 
     @patch("totali.cad_shielding.shield.CADShield._write_dxf")
     def test_all_entities_are_draft(self, mock_write, shield, tmp_output, sample_extraction, sample_classification):
-        mock_write.side_effect = lambda ext, path, ctx: shield._write_dxf_manual(ext, path, ctx)
+        mock_write.side_effect = lambda ext, path: shield._write_dxf_manual(ext, path)
         ctx = PipelineContext(
             input_path="/f.las", output_dir=tmp_output,
             extraction=sample_extraction,
