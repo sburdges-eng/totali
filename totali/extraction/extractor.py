@@ -8,7 +8,7 @@ Produces measurable error metrics and QA flags.
 
 import json
 from pathlib import Path
-from typing import Optional
+from typing import Optional, Union
 
 import numpy as np
 from scipy.spatial import Delaunay
@@ -31,16 +31,50 @@ class DeterministicExtractor(PipelinePhase):
         self.plan_cfg = config.get("planimetrics", {})
 
     def validate_inputs(self, context: PipelineContext) -> tuple[bool, list[str]]:
-        errors: list[str] = []
+        """Override base validate_inputs to provide specific error messages."""
+        errors = []
         if context.points_xyz is None:
-            errors.append("points_xyz missing; run geodetic phase first")
+            errors.append("Missing required field: points_xyz")
         if context.classification is None:
-            errors.append("classification missing; run segment phase first")
+            errors.append("Missing required field: classification")
+
         return len(errors) == 0, errors
 
     def run(self, context: PipelineContext) -> PhaseResult:
+        # Validate inputs
+        val_result = self._validate_inputs_internal(context)
+        if isinstance(val_result, PhaseResult):
+            return val_result
+        xyz, classification, ground_pts, output_dir = val_result
+
+        self.audit.log("extract", {
+            "total_points": len(xyz),
+            "ground_points": len(ground_pts),
+        })
+
+        result = ExtractionResult()
+
+        # 1-3. Surfaces
+        self._extract_surfaces(ground_pts, result)
+
+        # 4-5. Features
+        self._extract_features(xyz, classification, result)
+
+        # 6. QA flags
+        result.qa_flags = self._generate_qa_flags(result, classification)
+
+        # Write extraction report and return result
+        _, _, phase_result = self._write_report(
+            output_dir, result, classification, xyz, context
+        )
+        return phase_result
+
+    def _validate_inputs_internal(
+        self, context: PipelineContext
+    ) -> Union[tuple[np.ndarray, ClassificationResult, np.ndarray, Path], PhaseResult]:
+        """Internal validation for data availability and ground point extraction."""
         xyz = context.points_xyz
-        classification: ClassificationResult | None = context.classification
+        classification = context.classification
         output_dir = Path(context.output_dir)
 
         if xyz is None or classification is None:
@@ -49,9 +83,6 @@ class DeterministicExtractor(PipelinePhase):
                 message="Missing point data or classification"
             )
 
-        result = ExtractionResult()
-
-        # Extract ground points for DTM
         ground_mask = classification.labels == 2
         ground_pts = xyz[ground_mask]
 
@@ -61,11 +92,12 @@ class DeterministicExtractor(PipelinePhase):
                 message=f"Insufficient ground points: {len(ground_pts)}"
             )
 
-        self.audit.log("extract", {
-            "total_points": len(xyz),
-            "ground_points": len(ground_pts),
-        })
+        return xyz, classification, ground_pts, output_dir
 
+    def _extract_surfaces(
+        self, ground_pts: np.ndarray, result: ExtractionResult
+    ) -> None:
+        """Extract DTM, breaklines, and contours."""
         # 1. DTM / TIN generation
         result.dtm_vertices, result.dtm_faces, dtm_metrics = self._build_dtm(ground_pts)
         result.error_metrics["dtm"] = dtm_metrics
@@ -82,6 +114,10 @@ class DeterministicExtractor(PipelinePhase):
         )
         result.error_metrics["contours"] = cnt_metrics
 
+    def _extract_features(
+        self, xyz: np.ndarray, classification: ClassificationResult, result: ExtractionResult
+    ) -> None:
+        """Extract planimetric features and occlusion zones."""
         # 4. Planimetric features
         building_mask = classification.labels == 6
         curb_mask = classification.labels == 64
@@ -103,10 +139,10 @@ class DeterministicExtractor(PipelinePhase):
             if len(occluded) > 0:
                 result.occlusion_zones = self._build_occlusion_zones(occluded)
 
-        # 6. QA flags
-        result.qa_flags = self._generate_qa_flags(result, classification)
-
-        # Write extraction report
+    def _write_report(
+        self, output_dir: Path, result: ExtractionResult, classification: ClassificationResult, xyz: np.ndarray, context: PipelineContext
+    ) -> tuple[dict, Path, PhaseResult]:
+        """Generate and write extraction report, returning the PhaseResult."""
         report_path = output_dir / "extraction_report.json"
         report = {
             "dtm_vertices": len(result.dtm_vertices) if result.dtm_vertices is not None else 0,
@@ -124,6 +160,7 @@ class DeterministicExtractor(PipelinePhase):
                 for k, v in result.error_metrics.items()
             },
         }
+
         with open(report_path, "w") as f:
             json.dump(report, f, indent=2)
 
@@ -134,7 +171,7 @@ class DeterministicExtractor(PipelinePhase):
             "qa_flags": report["qa_flags"],
         })
 
-        return PhaseResult(
+        phase_result = PhaseResult(
             phase="extract",
             success=True,
             message=f"Extracted DTM ({report['dtm_faces']} faces), "
@@ -151,6 +188,8 @@ class DeterministicExtractor(PipelinePhase):
             output_files=[report_path],
         )
 
+        return report, report_path, phase_result
+
     def _build_dtm(self, ground_pts: np.ndarray) -> tuple:
         """Build Delaunay TIN from ground points with edge length filtering."""
         max_edge = self.dtm_cfg.get("max_triangle_edge_length", 50.0)
@@ -158,48 +197,34 @@ class DeterministicExtractor(PipelinePhase):
 
         # Optional thinning for very dense clouds
         if thin_factor < 1.0 and len(ground_pts) > 100000:
-            idx = np.random.default_rng(42).choice(
-                len(ground_pts),
-                size=int(len(ground_pts) * thin_factor),
-                replace=False,
+            indices = np.random.choice(
+                len(ground_pts), int(len(ground_pts) * thin_factor), replace=False
             )
-            pts = ground_pts[idx]
+            pts = ground_pts[indices]
         else:
             pts = ground_pts
 
+        if len(pts) < 3:
+            return pts, np.array([]), {"vertex_count": len(pts), "face_count": 0}
+
         # 2D Delaunay triangulation
         tri = Delaunay(pts[:, :2])
+        faces = tri.simplices
 
-        # Filter triangles by max edge length
-        valid_faces = []
-        for simplex in tri.simplices:
-            verts = pts[simplex]
-            edges = [
-                np.linalg.norm(verts[0] - verts[1]),
-                np.linalg.norm(verts[1] - verts[2]),
-                np.linalg.norm(verts[2] - verts[0]),
-            ]
-            if max(edges) <= max_edge:
-                valid_faces.append(simplex)
+        # Filter by edge length
+        if max_edge > 0:
+            all_edges = np.concatenate([
+                np.linalg.norm(pts[faces[:, 0]] - pts[faces[:, 1]], axis=1),
+                np.linalg.norm(pts[faces[:, 1]] - pts[faces[:, 2]], axis=1),
+                np.linalg.norm(pts[faces[:, 2]] - pts[faces[:, 0]], axis=1),
+            ])
+            all_edges = all_edges.reshape(3, -1).T
+            mask = np.all(all_edges < max_edge, axis=1)
+            faces = faces[mask]
 
-        faces = np.array(valid_faces) if valid_faces else np.empty((0, 3), dtype=int)
-
-        # Error metrics
-        if len(faces) > 0:
-            # Compute face areas and edge stats
-            all_edges = []
-            for f in faces:
-                v = pts[f]
-                all_edges.extend([
-                    np.linalg.norm(v[0] - v[1]),
-                    np.linalg.norm(v[1] - v[2]),
-                    np.linalg.norm(v[2] - v[0]),
-                ])
-            all_edges = np.array(all_edges)
             metrics = {
                 "vertex_count": len(pts),
                 "face_count": len(faces),
-                "mean_edge_length": float(np.mean(all_edges)),
                 "max_edge_length": float(np.max(all_edges)),
                 "min_edge_length": float(np.min(all_edges)),
             }
