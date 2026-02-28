@@ -28,6 +28,7 @@ tmp/
 
 # Output artifacts
 output/
+audit_logs/
 
 # Local datasets
 .local-datasets/
