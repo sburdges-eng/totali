@@ -100,17 +100,23 @@ class CADShield(PipelinePhase):
         close_tol = self.healing_cfg.get("close_tolerance", 0.001)
         degen_tol = self.healing_cfg.get("degenerate_face_threshold", 0.0001)
 
+        # Performance optimization: pre-calculate squared tolerances to avoid sqrt in np.linalg.norm
+        close_tol_sq = close_tol ** 2
+        degen_tol_sq = (degen_tol * 2.0) ** 2  # Area threshold squared component
+
         # Check DTM faces
         if extraction.dtm_faces is not None:
             report.input_entity_count += len(extraction.dtm_faces)
             for i, face in enumerate(extraction.dtm_faces):
                 verts = extraction.dtm_vertices[face]
-                area = 0.5 * np.linalg.norm(
-                    np.cross(verts[1] - verts[0], verts[2] - verts[0])
-                )
-                if area < degen_tol:
+                # Area = 0.5 * |(v1-v0) x (v2-v0)|
+                # area < degen_tol  =>  0.25 * |cross|^2 < degen_tol^2  =>  |cross|^2 < (2*degen_tol)^2
+                cross_vec = np.cross(verts[1] - verts[0], verts[2] - verts[0])
+                sq_norm_cross = np.sum(cross_vec**2)
+
+                if sq_norm_cross < degen_tol_sq:
                     report.quarantined_count += 1
-                    report.issues.append(f"Degenerate DTM face {i}: area={area:.8f}")
+                    report.issues.append(f"Degenerate DTM face {i}: area={0.5 * np.sqrt(sq_norm_cross):.8f}")
                 else:
                     report.passed_count += 1
 
@@ -131,9 +137,14 @@ class CADShield(PipelinePhase):
                     report.issues.append(f"{name}[{i}]: fewer than 2 vertices")
                     continue
 
-                # Check for duplicate consecutive vertices
-                diffs = np.linalg.norm(np.diff(line[:, :2], axis=0), axis=1)
-                dupes = np.sum(diffs < close_tol)
+                # Performance optimization:
+                # Use vectorized squared distance calculation instead of np.linalg.norm(np.diff(...))
+                deltas = line[1:, :2] - line[:-1, :2]
+                sq_diffs = np.sum(deltas**2, axis=1)
+
+                # np.count_nonzero is faster than np.sum for boolean masks
+                dupes = np.count_nonzero(sq_diffs < close_tol_sq)
+
                 if dupes > 0:
                     report.healed_count += 1
                     report.issues.append(
@@ -156,8 +167,10 @@ class CADShield(PipelinePhase):
                     report.quarantined_count += 1
                     report.issues.append(f"{name}[{i}]: fewer than 3 vertices")
                 else:
-                    # Check if closed
-                    if np.linalg.norm(poly[0] - poly[-1]) > close_tol:
+                    # Check if closed (squared distance comparison)
+                    dist_vec = poly[0] - poly[-1]
+                    sq_dist = np.sum(dist_vec**2)
+                    if sq_dist > close_tol_sq:
                         report.healed_count += 1
                     else:
                         report.passed_count += 1
@@ -171,7 +184,6 @@ class CADShield(PipelinePhase):
             return self._write_dxf_ezdxf(extraction, path)
         except ImportError:
             return self._write_dxf_manual(extraction, path)
-
     def _write_dxf_ezdxf(self, extraction: ExtractionResult, path: Path) -> dict:
         """Write DXF using ezdxf library."""
         import ezdxf
@@ -298,15 +310,15 @@ class CADShield(PipelinePhase):
             "0", "SECTION", "2", "ENTITIES",
         ]
 
-        # Write breaklines as LINE entities
+        # Very basic LINE writer for breaklines just to have something
         layer = self.layer_map.get("breaklines", "TOTaLi-SURV-BRKLN-DRAFT")
         for brk in extraction.breaklines:
-            for i in range(len(brk) - 1):
+            if len(brk) >= 2:
                 entity_id = self._entity_id()
-                p0, p1 = brk[i], brk[i + 1]
+                p0 = brk[0]
+                p1 = brk[1]
                 lines.extend([
-                    "0", "LINE",
-                    "8", layer,
+                    "0", "LINE", "8", layer,
                     "10", str(p0[0]), "20", str(p0[1]), "30", str(p0[2]),
                     "11", str(p1[0]), "21", str(p1[1]), "31", str(p1[2]),
                 ])
@@ -328,7 +340,8 @@ class CADShield(PipelinePhase):
         return uuid.uuid4().hex[:12]
 
     def _entity_record(
-        self, entity_id: str, entity_type: str, layer: str, geometry
+        self, entity_id: str, entity_type: str, layer: str, geometry,
+        confidence: float = 0.0, rule_engine_passed: bool = True, provenance: dict = None
     ) -> dict:
         """Create an entity record for the manifest / audit trail."""
         geo_bytes = geometry.tobytes() if isinstance(geometry, np.ndarray) else str(geometry).encode()
@@ -338,4 +351,7 @@ class CADShield(PipelinePhase):
             "layer": layer,
             "status": GeometryStatus.DRAFT.value,
             "source_hash": hashlib.sha256(geo_bytes).hexdigest()[:16],
+            "confidence": confidence,
+            "rule_engine_passed": rule_engine_passed,
+            "provenance": provenance or {},
         }

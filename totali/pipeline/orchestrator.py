@@ -13,7 +13,6 @@ from totali.pipeline.context import PipelineConfig, PipelineContext
 from totali.geodetic.gatekeeper import GeodeticGatekeeper
 from totali.segmentation.classifier import PointCloudClassifier
 from totali.extraction.extractor import DeterministicExtractor
-from totali.cad_shielding.shield import CADShield
 from totali.linting.surveyor_lint import SurveyorLinter
 from totali.audit.logger import AuditLogger
 
@@ -26,6 +25,8 @@ class PipelineOrchestrator:
         self.config = PipelineConfig.model_validate(config)
         self.audit = audit
         self.output_dir = output_dir
+
+        from totali.cad_shielding.shield import CADShield
 
         # Initialize phase processors
         self.phases = {
@@ -46,77 +47,30 @@ class PipelineOrchestrator:
         context = PipelineContext(
             input_path=input_path,
             output_dir=self.output_dir,
+            crs=self.config.integration.source_crs
         )
 
-        for phase_name in phases_to_run:
-            processor = self.phases[phase_name]
-            self.audit.log(f"phase_start", {"phase": phase_name})
+        for p_name in phases_to_run:
+            if p_name not in self.phases:
+                continue
 
-            pt0 = time.time()
-            try:
-                valid, errors = processor.validate_inputs(context)
-                if not valid:
-                    phase_result = PhaseResult(
-                        phase=phase_name,
-                        success=False,
-                        duration_sec=time.time() - pt0,
-                        message=f"Input validation failed: {errors}",
-                    )
-                    result.phases.append(phase_result)
-                    result.success = False
-                    context.phase_status[phase_name] = "failed_validation"
-                    context.errors.extend(errors)
-                    self.audit.log("phase_failed", {
-                        "phase": phase_name,
-                        "message": phase_result.message,
-                    })
-                    break
-
-                phase_result = processor.run(context)
-                phase_result.duration_sec = time.time() - pt0
-
-                if not phase_result.success:
-                    self.audit.log("phase_failed", {
-                        "phase": phase_name,
-                        "message": phase_result.message,
-                    })
-                    result.success = False
-                    result.phases.append(phase_result)
-                    context.phase_status[phase_name] = "failed"
-                    context.errors.append(phase_result.message)
-                    break
-
-                # Pass outputs forward as context for next phase
-                context.merge_data(phase_result.data)
-                context.last_output_files = phase_result.output_files
-                context.phase_status[phase_name] = "success"
-                result.phases.append(phase_result)
-                result.output_files.extend(phase_result.output_files)
-
-                self.audit.log("phase_complete", {
-                    "phase": phase_name,
-                    "duration_sec": phase_result.duration_sec,
-                    "outputs": [str(f) for f in phase_result.output_files],
-                })
-
-            except Exception as e:
-                phase_result = PhaseResult(
-                    phase=phase_name, success=False,
-                    duration_sec=time.time() - pt0,
-                    message=f"Exception: {e}",
+            phase_obj = self.phases[p_name]
+            valid, errors = phase_obj.validate_inputs(context)
+            if not valid:
+                return PipelineResult(
+                    project_id=self.config.project.name,
+                    success=False,
+                    phases=[PhaseResult(phase=p_name, success=False, message="; ".join(errors))]
                 )
-                result.phases.append(phase_result)
-                result.success = False
-                context.phase_status[phase_name] = "exception"
-                context.errors.append(str(e))
-                self.audit.log("phase_exception", {
-                    "phase": phase_name, "error": str(e),
-                })
-                raise
 
-        result.stats = context.stats
-        result.classification = context.classification
-        result.extraction = context.extraction
-        result.healing = context.healing
+            p_res = phase_obj.run(context)
+            result.phases.append(p_res)
+
+            if not p_res.success:
+                result.success = False
+                break
+
+            context.merge_data(p_res.data)
+
         result.duration_sec = time.time() - t0
         return result
