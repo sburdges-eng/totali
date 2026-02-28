@@ -9,6 +9,7 @@ Usage:
 import click
 import yaml
 import sys
+import re
 from pathlib import Path
 from datetime import datetime
 
@@ -32,12 +33,21 @@ from totali.audit.logger import AuditLogger
 def main(input_path, config_path, phase, output_dir, project_id, dry_run):
     """TOTaLi-Assisted Drafting Pipeline"""
 
+    # Validate output_dir
+    if ".." in output_dir or output_dir.startswith("/") or output_dir.startswith("\\"):
+        raise click.UsageError(f"Invalid output directory: {output_dir}. Must be a relative path and not contain '..'.")
+
     # Load config
     with open(config_path, "r") as f:
         config = PipelineConfig.model_validate(yaml.safe_load(f))
 
     # Setup
     output_path = Path(output_dir)
+
+    # Validate project_id
+    if project_id and not re.match(r"^[a-zA-Z0-9_-]+$", project_id):
+        raise click.UsageError(f"Invalid project-id: {project_id}. Only alphanumeric, underscores, and dashes allowed.")
+
     output_path.mkdir(parents=True, exist_ok=True)
 
     project_id = project_id or f"TOTaLi_{datetime.now().strftime('%Y%m%d_%H%M%S')}"
