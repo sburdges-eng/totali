@@ -10,11 +10,6 @@ from pathlib import Path
 
 from totali.pipeline.models import PipelineResult, PhaseResult
 from totali.pipeline.context import PipelineConfig, PipelineContext
-from totali.geodetic.gatekeeper import GeodeticGatekeeper
-from totali.segmentation.classifier import PointCloudClassifier
-from totali.extraction.extractor import DeterministicExtractor
-from totali.cad_shielding.shield import CADShield
-from totali.linting.surveyor_lint import SurveyorLinter
 from totali.audit.logger import AuditLogger
 
 
@@ -26,6 +21,13 @@ class PipelineOrchestrator:
         self.config = PipelineConfig.model_validate(config)
         self.audit = audit
         self.output_dir = output_dir
+
+        # Lazy imports to avoid circular dependencies
+        from totali.geodetic.gatekeeper import GeodeticGatekeeper
+        from totali.segmentation.classifier import PointCloudClassifier
+        from totali.extraction.extractor import DeterministicExtractor
+        from totali.cad_shielding.shield import CADShield
+        from totali.linting.surveyor_lint import SurveyorLinter
 
         # Initialize phase processors
         self.phases = {
