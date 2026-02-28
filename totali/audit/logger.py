@@ -8,6 +8,7 @@ Supports later disputes and reproducibility verification.
 import json
 import hashlib
 import os
+import re
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Optional
@@ -20,11 +21,26 @@ class AuditLogger:
         project_id: str = "unknown",
         hash_algo: str = "sha256",
     ):
-        self.log_dir = Path(log_dir)
-        self.log_dir.mkdir(parents=True, exist_ok=True)
+        # Validate project_id to prevent path traversal
+        if not re.match(r"^[a-zA-Z0-9_-]+$", project_id):
+            raise ValueError(f"Invalid project_id: {project_id}. Only alphanumeric, underscores, and dashes allowed.")
+
+        self.log_dir = Path(log_dir).resolve()
+
+        if not self.log_dir.exists():
+            self.log_dir.mkdir(parents=True, exist_ok=True)
+            os.chmod(self.log_dir, 0o700)
+
         self.project_id = project_id
         self.hash_algo = hash_algo
-        self.log_path = self.log_dir / f"{project_id}_{datetime.now().strftime('%Y%m%d_%H%M%S')}.jsonl"
+
+        filename = f"{project_id}_{datetime.now().strftime('%Y%m%d_%H%M%S')}.jsonl"
+        self.log_path = (self.log_dir / filename).resolve()
+
+        # Ensure log_path is within log_dir
+        if not str(self.log_path).startswith(str(self.log_dir)):
+            raise ValueError(f"Insecure log path generated: {self.log_path}")
+
         self._prev_hash = "0" * 64  # genesis block
         self._seq = 0
 
@@ -48,8 +64,11 @@ class AuditLogger:
         record["hash"] = record_hash
         self._prev_hash = record_hash
 
-        # Append to JSONL
+        # Append to JSONL with restrictive permissions
+        file_exists = self.log_path.exists()
         with open(self.log_path, "a") as f:
+            if not file_exists:
+                os.chmod(self.log_path, 0o600)
             f.write(json.dumps(record, default=str) + "\n")
 
     def verify_chain(self) -> tuple[bool, list]:

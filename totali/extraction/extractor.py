@@ -214,6 +214,7 @@ class DeterministicExtractor(PipelinePhase):
         """
         Extract breaklines from slope discontinuities in the TIN.
         Breaklines are edges where adjacent triangle slopes differ significantly.
+        Uses vectorized NumPy operations for performance.
         """
         min_angle = np.radians(self.brk_cfg.get("min_angle_degrees", 15.0))
         min_length = self.brk_cfg.get("min_length_ft", 5.0)
@@ -222,31 +223,69 @@ class DeterministicExtractor(PipelinePhase):
         if len(faces) < 2:
             return breaklines, {"count": 0}
 
-        # Compute face normals
-        normals = np.zeros((len(faces), 3))
-        for i, f in enumerate(faces):
-            v0, v1, v2 = vertices[f[0]], vertices[f[1]], vertices[f[2]]
-            n = np.cross(v1 - v0, v2 - v0)
-            norm = np.linalg.norm(n)
-            normals[i] = n / norm if norm > 1e-10 else [0, 0, 1]
+        # Vectorized face normal computation
+        v0 = vertices[faces[:, 0]]
+        v1 = vertices[faces[:, 1]]
+        v2 = vertices[faces[:, 2]]
 
-        # Build edge-to-face adjacency
-        edge_faces = {}
-        for fi, f in enumerate(faces):
-            for e in [(f[0], f[1]), (f[1], f[2]), (f[2], f[0])]:
-                key = tuple(sorted(e))
-                edge_faces.setdefault(key, []).append(fi)
+        raw_normals = np.cross(v1 - v0, v2 - v0)
+        norms = np.linalg.norm(raw_normals, axis=1, keepdims=True)
 
-        # Find breakline edges: adjacent faces with significant slope change
+        normals = np.zeros_like(raw_normals)
+        mask = (norms > 1e-10).flatten()
+        normals[mask] = raw_normals[mask] / norms[mask]
+        normals[~mask] = [0.0, 0.0, 1.0]
+
+        # Vectorized edge-to-face adjacency
+        all_edges = np.concatenate([
+            faces[:, [0, 1]],
+            faces[:, [1, 2]],
+            faces[:, [2, 0]]
+        ], axis=0)
+        all_edges.sort(axis=1)
+
+        edge_to_face = np.tile(np.arange(len(faces)), 3)
+
+        # Sort edges lexicographically to bring duplicates together
+        order = np.lexsort((all_edges[:, 1], all_edges[:, 0]))
+        sorted_edges = all_edges[order]
+        sorted_faces = edge_to_face[order]
+
+        # Find where new edges start in the sorted list
+        edge_diff = np.any(sorted_edges[1:] != sorted_edges[:-1], axis=1)
+        edge_starts = np.concatenate(([0], np.where(edge_diff)[0] + 1))
+        edge_counts = np.diff(np.concatenate((edge_starts, [len(sorted_edges)])))
+
+        # Only process edges shared by exactly two faces (internal edges)
+        pair_indices = np.where(edge_counts == 2)[0]
+        if pair_indices.size == 0:
+            return [], {"count": 0, "total_edges_checked": len(edge_starts), "breakline_edges_found": 0}
+
+        pair_starts = edge_starts[pair_indices]
+
+        f0 = sorted_faces[pair_starts]
+        f1 = sorted_faces[pair_starts + 1]
+
+        # Compute angles between adjacent face normals
+        dot_products = np.sum(normals[f0] * normals[f1], axis=1)
+        angles = np.arccos(np.clip(dot_products, -1.0, 1.0))
+
+        # Compute edge lengths
+        v0_idx = sorted_edges[pair_starts, 0]
+        v1_idx = sorted_edges[pair_starts, 1]
+        edge_lens = np.linalg.norm(vertices[v1_idx] - vertices[v0_idx], axis=1)
+
+        # Filter by threshold
+        breakline_mask = (angles > min_angle) & (edge_lens >= min_length)
+
         breakline_edges = []
-        for (v0, v1), face_ids in edge_faces.items():
-            if len(face_ids) == 2:
-                angle = np.arccos(
-                    np.clip(np.dot(normals[face_ids[0]], normals[face_ids[1]]), -1, 1)
-                )
-                edge_len = np.linalg.norm(vertices[v0] - vertices[v1])
-                if angle > min_angle and edge_len >= min_length:
-                    breakline_edges.append((v0, v1, angle, edge_len))
+        for i in np.where(breakline_mask)[0]:
+            breakline_edges.append((
+                int(v0_idx[i]),
+                int(v1_idx[i]),
+                float(angles[i]),
+                float(edge_lens[i])
+            ))
 
         # Chain connected edges into polylines
         if breakline_edges:
@@ -255,7 +294,7 @@ class DeterministicExtractor(PipelinePhase):
 
         metrics = {
             "count": len(breaklines),
-            "total_edges_checked": len(edge_faces),
+            "total_edges_checked": len(edge_starts),
             "breakline_edges_found": len(breakline_edges),
         }
         return breaklines, metrics
