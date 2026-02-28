@@ -27,7 +27,10 @@ class AuditLogger:
 
         self.log_dir = Path(log_dir).resolve()
 
-        if not self.log_dir.exists():
+        if self.log_dir.exists():
+            if not self.log_dir.is_dir():
+                raise NotADirectoryError(f"log_dir path exists but is not a directory: {self.log_dir}")
+        else:
             self.log_dir.mkdir(parents=True, exist_ok=True)
             os.chmod(self.log_dir, 0o700)
 
