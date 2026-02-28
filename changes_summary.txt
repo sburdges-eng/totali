@@ -1,0 +1,862 @@
+"""
+Pipeline Orchestrator
+=====================
+Runs phases in sequence, enforcing the division of labor:
+  AI Classifies → Algorithms Measure → Humans Certify
+"""
+
+import time
+from pathlib import Path
+
+from totali.pipeline.models import PipelineResult, PhaseResult
+from totali.pipeline.context import PipelineConfig, PipelineContext
+from totali.audit.logger import AuditLogger
+
+
+PHASE_ORDER = ["geodetic", "segment", "extract", "shield", "lint"]
+
+
+class PipelineOrchestrator:
+    def __init__(self, config: dict, audit: AuditLogger, output_dir: Path):
+        self.config = PipelineConfig.model_validate(config)
+        self.audit = audit
+        self.output_dir = output_dir
+
+        # Initialize phase processors
+        from totali.geodetic.gatekeeper import GeodeticGatekeeper
+        from totali.segmentation.classifier import PointCloudClassifier
+        from totali.extraction.extractor import DeterministicExtractor
+        from totali.cad_shielding.shield import CADShield
+        from totali.linting.surveyor_lint import SurveyorLinter
+
+        self.phases = {
+            "geodetic": GeodeticGatekeeper(self.config.geodetic, audit),
+            "segment": PointCloudClassifier(self.config.segmentation, audit),
+            "extract": DeterministicExtractor(self.config.extraction, audit),
+            "shield": CADShield(self.config.cad_shielding, audit),
+            "lint": SurveyorLinter(self.config.linting, audit),
+        }
+
+    def run(self, input_path: str, phase: str = "all") -> PipelineResult:
+        t0 = time.time()
+        result = PipelineResult(
+            project_id=self.config.project.name
+        )
+
+        phases_to_run = PHASE_ORDER if phase == "all" else [phase]
+        context = PipelineContext(
+            input_path=input_path,
+            output_dir=self.output_dir,
+        )
+
+        for phase_name in phases_to_run:
+            processor = self.phases[phase_name]
+            self.audit.log(f"phase_start", {"phase": phase_name})
+
+            pt0 = time.time()
+            try:
+                valid, errors = processor.validate_inputs(context)
+                if not valid:
+                    phase_result = PhaseResult(
+                        phase=phase_name,
+                        success=False,
+                        duration_sec=time.time() - pt0,
+                        message=f"Input validation failed: {errors}",
+                    )
+                    result.phases.append(phase_result)
+                    result.success = False
+                    context.phase_status[phase_name] = "failed_validation"
+                    context.errors.extend(errors)
+                    self.audit.log("phase_failed", {
+                        "phase": phase_name,
+                        "message": phase_result.message,
+                    })
+                    break
+
+                phase_result = processor.run(context)
+                phase_result.duration_sec = time.time() - pt0
+
+                if not phase_result.success:
+                    self.audit.log("phase_failed", {
+                        "phase": phase_name,
+                        "message": phase_result.message,
+                    })
+                    result.success = False
+                    result.phases.append(phase_result)
+                    context.phase_status[phase_name] = "failed"
+                    context.errors.append(phase_result.message)
+                    break
+
+                # Pass outputs forward as context for next phase
+                context.merge_data(phase_result.data)
+                context.last_output_files = phase_result.output_files
+                context.phase_status[phase_name] = "success"
+                result.phases.append(phase_result)
+                result.output_files.extend(phase_result.output_files)
+
+                self.audit.log("phase_complete", {
+                    "phase": phase_name,
+                    "duration_sec": phase_result.duration_sec,
+                    "outputs": [str(f) for f in phase_result.output_files],
+                })
+
+            except Exception as e:
+                phase_result = PhaseResult(
+                    phase=phase_name, success=False,
+                    duration_sec=time.time() - pt0,
+                    message=f"Exception: {e}",
+                )
+                result.phases.append(phase_result)
+                result.success = False
+                context.phase_status[phase_name] = "exception"
+                context.errors.append(str(e))
+                self.audit.log("phase_exception", {
+                    "phase": phase_name, "error": str(e),
+                })
+                raise
+
+        result.stats = context.stats
+        result.classification = context.classification
+        result.extraction = context.extraction
+        result.healing = context.healing
+        result.duration_sec = time.time() - t0
+        return result
+"""
+Phase 5: Surveyor Linting + Human Certification
+=================================================
+Ghost suggestions inside CAD → human accepts/rejects → logged.
+Outputs remain DRAFT until promoted by certified workflow rules.
+AUTO-PROMOTE IS ALWAYS FALSE. PLS remains sovereign.
+"""
+
+import json
+from datetime import datetime, timezone
+from pathlib import Path
+from typing import Optional
+
+from totali.pipeline.models import (
+    PhaseResult, GeometryStatus, LintItem, OcclusionType
+)
+from totali.pipeline.base_phase import PipelinePhase
+from totali.pipeline.context import PipelineContext
+from totali.audit.logger import AuditLogger
+
+
+class SurveyorLinter(PipelinePhase):
+    def __init__(self, config: dict, audit: AuditLogger):
+        super().__init__(config, audit)
+        self.ghost_opacity = config.get("ghost_opacity", 0.4)
+        self.flag_colors = config.get("flag_colors", {})
+        self.auto_promote = False  # HARDCODED FALSE – never auto-promote
+        self.require_pls = config.get("require_pls_signature", True)
+
+    def validate_inputs(self, context: PipelineContext) -> tuple[bool, list[str]]:
+        errors: list[str] = []
+        if context.manifest is None:
+            errors.append("manifest missing; run shield phase first")
+        return len(errors) == 0, errors
+
+    def run(self, context: PipelineContext) -> PhaseResult:
+        manifest = context.manifest or {}
+        extraction = context.extraction
+        classification = context.classification
+        output_dir = Path(context.output_dir)
+
+        entities = manifest.get("entities", [])
+
+        # Build lint items from manifest entities
+        lint_items = []
+        for entity in entities:
+            confidence = self._estimate_confidence(entity, classification)
+            occlusion = self._check_occlusion(entity, extraction)
+
+            item = LintItem(
+                item_id=entity["id"],
+                geometry_type=entity["type"],
+                layer=entity["layer"],
+                status=GeometryStatus.DRAFT,
+                confidence=confidence,
+                occlusion=occlusion,
+                source_hash=entity.get("source_hash", ""),
+            )
+            lint_items.append(item)
+
+        # Generate lint report
+        report = self._generate_lint_report(lint_items, extraction)
+
+        # Write lint report
+        report_path = output_dir / "lint_report.json"
+        with open(report_path, "w") as f:
+            json.dump(report, f, indent=2, default=str)
+
+        # Write review worksheet (human-readable)
+        worksheet_path = output_dir / "review_worksheet.txt"
+        self._write_review_worksheet(lint_items, extraction, worksheet_path)
+
+        self.audit.log("lint_complete", {
+            "total_items": len(lint_items),
+            "high_confidence": report["summary"]["high_confidence"],
+            "medium_confidence": report["summary"]["medium_confidence"],
+            "low_confidence": report["summary"]["low_confidence"],
+            "occluded": report["summary"]["occluded"],
+            "auto_promote": False,
+        })
+
+        return PhaseResult(
+            phase="lint",
+            success=True,
+            message=f"Lint report generated: {len(lint_items)} items for review "
+                    f"({report['summary']['low_confidence']} need attention, "
+                    f"{report['summary']['occluded']} occluded)",
+            data={
+                "lint_items": lint_items,
+                "lint_report": report,
+            },
+            output_files=[report_path, worksheet_path],
+        )
+
+    def _estimate_confidence(self, entity: dict, classification) -> float:
+        """Estimate confidence for a CAD entity based on classification results."""
+        if classification is None:
+            return 0.5
+        # Use mean confidence as proxy (in production, would map entity geometry
+        # back to source points and compute per-entity confidence)
+        return classification.mean_confidence
+
+    def _check_occlusion(self, entity: dict, extraction) -> OcclusionType:
+        """Check if entity overlaps with occlusion zones."""
+        if extraction is None or not extraction.occlusion_zones:
+            return OcclusionType.NONE
+
+        layer = entity.get("layer", "")
+        if "OCCLUSION" in layer:
+            return OcclusionType.UNKNOWN
+
+        # Simplified: in production, would do spatial intersection
+        return OcclusionType.NONE
+
+    def _generate_lint_report(self, items: list, extraction) -> dict:
+        """Generate the full lint report with summary and item details."""
+        high = sum(1 for i in items if i.confidence >= 0.75)
+        medium = sum(1 for i in items if 0.50 <= i.confidence < 0.75)
+        low = sum(1 for i in items if i.confidence < 0.50)
+        occluded = sum(1 for i in items if i.occlusion != OcclusionType.NONE)
+
+        report = {
+            "generated": datetime.now(timezone.utc).isoformat(),
+            "pipeline_version": "0.1.0",
+            "auto_promote": False,
+            "require_pls_signature": self.require_pls,
+            "summary": {
+                "total_items": len(items),
+                "high_confidence": high,
+                "medium_confidence": medium,
+                "low_confidence": low,
+                "occluded": occluded,
+                "status_counts": {
+                    GeometryStatus.DRAFT.value: len(items),
+                    GeometryStatus.ACCEPTED.value: 0,
+                    GeometryStatus.REJECTED.value: 0,
+                    GeometryStatus.CERTIFIED.value: 0,
+                },
+            },
+            "qa_flags": extraction.qa_flags if extraction else [],
+            "items": [
+                {
+                    "id": item.item_id,
+                    "type": item.geometry_type,
+                    "layer": item.layer,
+                    "status": item.status.value,
+                    "confidence": round(item.confidence, 4),
+                    "occlusion": item.occlusion.value,
+                    "source_hash": item.source_hash,
+                    "color": self._confidence_color(item.confidence),
+                }
+                for item in items
+            ],
+            "certification_requirements": {
+                "pls_signature_required": self.require_pls,
+                "all_items_must_be": "ACCEPTED or REJECTED",
+                "no_draft_items_allowed_in_final": True,
+                "occlusion_zones_require": "field_verification_plan",
+            },
+        }
+
+        return report
+
+    def _confidence_color(self, confidence: float) -> str:
+        if confidence >= 0.75:
+            return self.flag_colors.get("high_confidence", "#00FF00")
+        elif confidence >= 0.50:
+            return self.flag_colors.get("medium_confidence", "#FFAA00")
+        else:
+            return self.flag_colors.get("low_confidence", "#FF0000")
+
+    def _write_review_worksheet(
+        self, items: list, extraction, path: Path
+    ):
+        """Write human-readable review worksheet."""
+        lines = [
+            "=" * 72,
+            "TOTaLi DRAFTING – SURVEYOR REVIEW WORKSHEET",
+            "=" * 72,
+            f"Generated: {datetime.now(timezone.utc).isoformat()}",
+            f"Total Items for Review: {len(items)}",
+            f"Auto-Promote: DISABLED (PLS certification required)",
+            "",
+            "-" * 72,
+            "QA FLAGS",
+            "-" * 72,
+        ]
+
+        if extraction and extraction.qa_flags:
+            for flag in extraction.qa_flags:
+                lines.append(
+                    f"  [{flag['severity'].upper()}] {flag['message']}"
+                )
+        else:
+            lines.append("  No QA flags.")
+
+        lines.extend([
+            "",
+            "-" * 72,
+            "ITEMS REQUIRING ATTENTION (Low Confidence / Occluded)",
+            "-" * 72,
+        ])
+
+        attention_items = [
+            i for i in items
+            if i.confidence < 0.50 or i.occlusion != OcclusionType.NONE
+        ]
+
+        if attention_items:
+            for item in attention_items:
+                lines.append(
+                    f"  ID: {item.item_id}  |  Type: {item.geometry_type}  |  "
+                    f"Layer: {item.layer}  |  Conf: {item.confidence:.1%}  |  "
+                    f"Occlusion: {item.occlusion.value}"
+                )
+                lines.append(f"    [ ] ACCEPT   [ ] REJECT   Notes: _______________")
+                lines.append("")
+        else:
+            lines.append("  No items flagged for special attention.")
+
+        lines.extend([
+            "",
+            "-" * 72,
+            "CERTIFICATION",
+            "-" * 72,
+            "",
+            "I have reviewed all AI-assisted drafting output and confirm:",
+            "  [ ] All geometry originates from measured data",
+            "  [ ] No terrain has been fabricated under occlusion",
+            "  [ ] Occlusion zones have field verification plans",
+            "  [ ] Layer standards comply with project requirements",
+            "",
+            "PLS Signature: _________________________  Date: ____________",
+            "License No:    _________________________  State: ___________",
+            "",
+            "=" * 72,
+        ])
+
+        with open(path, "w") as f:
+            f.write("\n".join(lines))
+
+    # ── Interactive Review API ──────────────────────────────────────────
+
+    @staticmethod
+    def accept_item(item: LintItem, reviewer: str, audit: AuditLogger, notes: str = ""):
+        """Accept a draft item (called by CAD plugin or review UI)."""
+        item.status = GeometryStatus.ACCEPTED
+        item.reviewer = reviewer
+        item.review_timestamp = datetime.now(timezone.utc).isoformat()
+        item.notes = notes
+        audit.log("accept", {
+            "item_id": item.item_id,
+            "reviewer": reviewer,
+            "timestamp": item.review_timestamp,
+        })
+
+    @staticmethod
+    def reject_item(item: LintItem, reviewer: str, audit: AuditLogger, notes: str = ""):
+        """Reject a draft item."""
+        item.status = GeometryStatus.REJECTED
+        item.reviewer = reviewer
+        item.review_timestamp = datetime.now(timezone.utc).isoformat()
+        item.notes = notes
+        audit.log("reject", {
+            "item_id": item.item_id,
+            "reviewer": reviewer,
+            "reason": notes,
+            "timestamp": item.review_timestamp,
+        })
+
+    @staticmethod
+    def promote_to_certified(
+        items: list, pls_name: str, pls_license: str, audit: AuditLogger
+    ) -> bool:
+        """
+        Promote all accepted items to certified status.
+        Requires ALL items to be either ACCEPTED or REJECTED (no DRAFT remaining).
+        Returns False if any items are still in DRAFT status.
+        """
+        draft_remaining = [i for i in items if i.status == GeometryStatus.DRAFT]
+        if draft_remaining:
+            audit.log("promote_blocked", {
+                "reason": f"{len(draft_remaining)} items still in DRAFT status",
+                "pls": pls_name,
+            })
+            return False
+
+        accepted = [i for i in items if i.status == GeometryStatus.ACCEPTED]
+        for item in accepted:
+            item.status = GeometryStatus.CERTIFIED
+            # Remove -DRAFT suffix from layer name
+            if item.layer.endswith("-DRAFT"):
+                item.layer = item.layer[:-6]
+
+        audit.log("certify", {
+            "pls_name": pls_name,
+            "pls_license": pls_license,
+            "certified_count": len(accepted),
+            "rejected_count": len([i for i in items if i.status == GeometryStatus.REJECTED]),
+            "timestamp": datetime.now(timezone.utc).isoformat(),
+        })
+
+        return True
+"""Tests for Phase 5: SurveyorLinter."""
+
+from datetime import datetime
+from pathlib import Path
+
+import numpy as np
+import pytest
+
+from totali.linting.surveyor_lint import SurveyorLinter
+from totali.pipeline.context import PipelineContext
+from totali.pipeline.models import (
+    PhaseResult,
+    LintItem,
+    GeometryStatus,
+    OcclusionType,
+    ExtractionResult,
+    ClassificationResult,
+    CRSMetadata,
+    PointCloudStats,
+)
+
+
+@pytest.fixture
+def linter(audit_logger, sample_config):
+    return SurveyorLinter(sample_config["linting"], audit_logger)
+
+
+@pytest.fixture
+def sample_manifest():
+    """Entity manifest as would be produced by CADShield."""
+    return {
+        "format": "dxf",
+        "path": "/fake/output.dxf",
+        "entity_count": 3,
+        "entities": [
+            {"id": "ent001", "type": "3DFACE", "layer": "TOTaLi-SURV-DTM-DRAFT", "status": "DRAFT", "source_hash": "aabb"},
+            {"id": "ent002", "type": "POLYLINE", "layer": "TOTaLi-SURV-BRKLN-DRAFT", "status": "DRAFT", "source_hash": "ccdd"},
+            {"id": "ent003", "type": "POLYGON", "layer": "TOTaLi-PLAN-BLDG-DRAFT", "status": "DRAFT", "source_hash": "eeff"},
+        ],
+    }
+
+
+class TestAutoPromoteHardcoded:
+    def test_auto_promote_always_false(self, linter):
+        assert linter.auto_promote is False
+
+    def test_config_cannot_enable_auto_promote(self, audit_logger):
+        linter = SurveyorLinter({"auto_promote": True}, audit_logger)
+        assert linter.auto_promote is False
+
+
+class TestValidateInputs:
+    def test_missing_manifest(self, linter, tmp_output):
+        ctx = PipelineContext(input_path="/f.las", output_dir=tmp_output)
+        valid, errors = linter.validate_inputs(ctx)
+        assert valid is False
+        assert any("manifest" in e for e in errors)
+
+    def test_valid_with_manifest(self, linter, tmp_output, sample_manifest):
+        ctx = PipelineContext(
+            input_path="/f.las", output_dir=tmp_output,
+            manifest=sample_manifest,
+        )
+        valid, errors = linter.validate_inputs(ctx)
+        assert valid is True
+
+
+class TestConfidenceEstimation:
+    def test_no_classification_returns_default(self, linter):
+        entity = {"id": "x", "type": "LINE", "layer": "L"}
+        conf = linter._estimate_confidence(entity, None)
+        assert conf == 0.5
+
+    def test_uses_mean_confidence(self, linter, sample_classification):
+        entity = {"id": "x", "type": "LINE", "layer": "L"}
+        conf = linter._estimate_confidence(entity, sample_classification)
+        assert conf == sample_classification.mean_confidence
+
+
+class TestOcclusionCheck:
+    def test_no_extraction_returns_none(self, linter):
+        entity = {"id": "x", "layer": "L"}
+        result = linter._check_occlusion(entity, None)
+        assert result == OcclusionType.NONE
+
+    def test_occlusion_layer_returns_unknown(self, linter):
+        entity = {"id": "x", "layer": "TOTaLi-QA-OCCLUSION"}
+        ext = ExtractionResult(occlusion_zones=[np.array([[0, 0], [1, 1], [0, 1]])])
+        result = linter._check_occlusion(entity, ext)
+        assert result == OcclusionType.UNKNOWN
+
+
+class TestLintReport:
+    def test_report_structure(self, linter, sample_classification):
+        items = [
+            LintItem(item_id="a", geometry_type="LINE", layer="L", confidence=0.9),
+            LintItem(item_id="b", geometry_type="FACE", layer="L", confidence=0.3),
+        ]
+        ext = ExtractionResult(qa_flags=[{"type": "test", "severity": "info", "message": "ok"}])
+        report = linter._generate_lint_report(items, ext)
+
+        assert "generated" in report
+        assert report["auto_promote"] is False
+        assert report["summary"]["total_items"] == 2
+        assert report["summary"]["high_confidence"] == 1
+        assert report["summary"]["low_confidence"] == 1
+        assert len(report["items"]) == 2
+        assert len(report["qa_flags"]) == 1
+
+    def test_certification_requirements_present(self, linter):
+        report = linter._generate_lint_report([], None)
+        reqs = report["certification_requirements"]
+        assert reqs["pls_signature_required"] is True
+        assert reqs["no_draft_items_allowed_in_final"] is True
+
+
+class TestConfidenceColor:
+    def test_high_confidence_green(self, linter):
+        assert linter._confidence_color(0.80) == "#00FF00"
+
+    def test_medium_confidence_amber(self, linter):
+        assert linter._confidence_color(0.60) == "#FFAA00"
+
+    def test_low_confidence_red(self, linter):
+        assert linter._confidence_color(0.30) == "#FF0000"
+
+
+class TestReviewWorksheet:
+    def test_writes_worksheet_file(self, linter, tmp_path, sample_classification):
+        items = [
+            LintItem(item_id="a", geometry_type="LINE", layer="L", confidence=0.3),
+        ]
+        ext = ExtractionResult(
+            qa_flags=[{"type": "low_confidence", "severity": "warning", "message": "test"}]
+        )
+        ws_path = tmp_path / "worksheet.txt"
+        linter._write_review_worksheet(items, ext, ws_path)
+
+        assert ws_path.exists()
+        content = ws_path.read_text()
+        assert "SURVEYOR REVIEW WORKSHEET" in content
+        assert "PLS Signature" in content
+        assert "ACCEPT" in content
+        assert "REJECT" in content
+
+    def test_worksheet_contains_attention_items(self, linter, tmp_path):
+        items = [
+            LintItem(item_id="low", geometry_type="LINE", layer="L", confidence=0.2),
+            LintItem(item_id="high", geometry_type="LINE", layer="L", confidence=0.9),
+        ]
+        ws_path = tmp_path / "ws.txt"
+        linter._write_review_worksheet(items, None, ws_path)
+        content = ws_path.read_text()
+        assert "low" in content
+        assert "ITEMS REQUIRING ATTENTION" in content
+
+
+class TestInteractiveReview:
+    def test_accept_item(self, audit_logger):
+        item = LintItem(item_id="x", geometry_type="LINE", layer="L")
+        SurveyorLinter.accept_item(item, "John PLS", audit_logger, "looks good")
+        assert item.status == GeometryStatus.ACCEPTED
+        assert item.reviewer == "John PLS"
+        assert item.review_timestamp is not None
+        assert item.notes == "looks good"
+
+    def test_reject_item(self, audit_logger):
+        item = LintItem(item_id="x", geometry_type="LINE", layer="L")
+        SurveyorLinter.reject_item(item, "Jane PLS", audit_logger, "bad geometry")
+        assert item.status == GeometryStatus.REJECTED
+        assert item.reviewer == "Jane PLS"
+
+    def test_promote_blocked_with_draft_items(self, audit_logger):
+        items = [
+            LintItem(item_id="a", geometry_type="LINE", layer="L-DRAFT", status=GeometryStatus.ACCEPTED),
+            LintItem(item_id="b", geometry_type="LINE", layer="L-DRAFT", status=GeometryStatus.DRAFT),
+        ]
+        result = SurveyorLinter.promote_to_certified(items, "PLS Name", "12345", audit_logger)
+        assert result is False
+
+    def test_promote_succeeds_when_all_reviewed(self, audit_logger):
+        items = [
+            LintItem(item_id="a", geometry_type="LINE", layer="L-DRAFT", status=GeometryStatus.ACCEPTED),
+            LintItem(item_id="b", geometry_type="LINE", layer="L-DRAFT", status=GeometryStatus.REJECTED),
+        ]
+        result = SurveyorLinter.promote_to_certified(items, "PLS Name", "12345", audit_logger)
+        assert result is True
+        assert items[0].status == GeometryStatus.CERTIFIED
+        assert items[0].layer == "L"  # -DRAFT removed
+        assert items[1].status == GeometryStatus.REJECTED  # unchanged
+
+    def test_promote_removes_draft_suffix(self, audit_logger):
+        items = [
+            LintItem(item_id="a", geometry_type="LINE", layer="TOTaLi-SURV-DTM-DRAFT", status=GeometryStatus.ACCEPTED),
+        ]
+        SurveyorLinter.promote_to_certified(items, "P", "1", audit_logger)
+        assert items[0].layer == "TOTaLi-SURV-DTM"
+
+
+class TestPhaseRun:
+    def test_run_produces_lint_report(self, linter, tmp_output, sample_manifest, sample_classification):
+        ext = ExtractionResult(qa_flags=[])
+        ctx = PipelineContext(
+            input_path="/f.las", output_dir=tmp_output,
+            manifest=sample_manifest,
+            extraction=ext,
+            classification=sample_classification,
+        )
+        result = linter.run(ctx)
+        assert isinstance(result, PhaseResult)
+        assert result.phase == "lint"
+        assert result.success is True
+        assert "lint_items" in result.data
+        assert "lint_report" in result.data
+        assert len(result.output_files) == 2
+
+    def test_output_files_created(self, linter, tmp_output, sample_manifest, sample_classification):
+        ctx = PipelineContext(
+            input_path="/f.las", output_dir=tmp_output,
+            manifest=sample_manifest,
+            extraction=ExtractionResult(),
+            classification=sample_classification,
+        )
+        linter.run(ctx)
+        assert (tmp_output / "lint_report.json").exists()
+        assert (tmp_output / "review_worksheet.txt").exists()
+
+    def test_all_items_start_as_draft(self, linter, tmp_output, sample_manifest, sample_classification):
+        ctx = PipelineContext(
+            input_path="/f.las", output_dir=tmp_output,
+            manifest=sample_manifest,
+            classification=sample_classification,
+        )
+        result = linter.run(ctx)
+        for item in result.data["lint_items"]:
+            assert item.status == GeometryStatus.DRAFT
+"""Tests for Phase 4: CADShield."""
+
+import json
+from pathlib import Path
+from unittest.mock import patch
+
+import numpy as np
+import pytest
+
+from totali.cad_shielding.shield import CADShield
+from totali.pipeline.context import PipelineContext
+from totali.pipeline.models import (
+    PhaseResult,
+    ExtractionResult,
+    HealingReport,
+    GeometryStatus,
+    CRSMetadata,
+    PointCloudStats,
+    ClassificationResult,
+)
+
+
+@pytest.fixture
+def shield(audit_logger, sample_config):
+    return CADShield(sample_config["cad_shielding"], audit_logger)
+
+
+@pytest.fixture
+def sample_extraction():
+    """Minimal ExtractionResult with geometry for shield testing."""
+    rng = np.random.default_rng(42)
+    n_verts = 50
+    verts = np.column_stack([
+        rng.uniform(0, 100, n_verts),
+        rng.uniform(0, 100, n_verts),
+        rng.uniform(95, 105, n_verts),
+    ])
+    faces = np.array([[0, 1, 2], [2, 3, 4], [4, 5, 6]])
+
+    return ExtractionResult(
+        dtm_vertices=verts,
+        dtm_faces=faces,
+        breaklines=[np.array([[0, 0, 100], [10, 10, 101]])],
+        contours_minor=[np.array([[0, 0], [5, 5]])],
+        contours_index=[np.array([[0, 0], [10, 10]])],
+        building_footprints=[np.array([[0, 0], [10, 0], [10, 10], [0, 10]])],
+        curb_lines=[],
+        wire_lines=[],
+        hardscape_polygons=[],
+        occlusion_zones=[np.array([[50, 50], [60, 50], [55, 60]])],
+    )
+
+
+class TestValidateInputs:
+    def test_missing_extraction(self, shield, tmp_output):
+        ctx = PipelineContext(input_path="/f.las", output_dir=tmp_output)
+        valid, errors = shield.validate_inputs(ctx)
+        assert valid is False
+        assert any("extraction" in e for e in errors)
+
+    def test_valid_with_extraction(self, shield, tmp_output, sample_extraction):
+        ctx = PipelineContext(
+            input_path="/f.las", output_dir=tmp_output,
+            extraction=sample_extraction,
+        )
+        valid, errors = shield.validate_inputs(ctx)
+        assert valid is True
+
+
+class TestGeometryHealing:
+    def test_counts_entities(self, shield, sample_extraction):
+        report = shield._heal_geometry(sample_extraction)
+        assert isinstance(report, HealingReport)
+        assert report.input_entity_count > 0
+
+    def test_quarantines_degenerate_faces(self, shield):
+        verts = np.array([
+            [0, 0, 0], [0, 0, 0], [0, 0, 0],  # degenerate
+        ])
+        ext = ExtractionResult(dtm_vertices=verts, dtm_faces=np.array([[0, 1, 2]]))
+        report = shield._heal_geometry(ext)
+        assert report.quarantined_count >= 1
+
+    def test_heals_duplicate_vertices_in_polylines(self, shield):
+        line = np.array([[0, 0, 0], [0, 0, 0], [1, 1, 1]])  # dup at start
+        ext = ExtractionResult(breaklines=[line])
+        report = shield._heal_geometry(ext)
+        assert report.healed_count >= 1
+
+    def test_quarantines_short_polyline(self, shield):
+        line = np.array([[0, 0, 0]])  # only 1 vertex
+        ext = ExtractionResult(breaklines=[line])
+        report = shield._heal_geometry(ext)
+        assert report.quarantined_count >= 1
+
+    def test_quarantines_polygon_with_too_few_vertices(self, shield):
+        poly = np.array([[0, 0], [1, 1]])  # only 2 vertices
+        ext = ExtractionResult(building_footprints=[poly])
+        report = shield._heal_geometry(ext)
+        assert report.quarantined_count >= 1
+
+
+class TestEntityID:
+    def test_unique_ids(self, shield):
+        ids = {shield._entity_id() for _ in range(100)}
+        assert len(ids) == 100
+
+    def test_id_length(self, shield):
+        eid = shield._entity_id()
+        assert len(eid) == 12
+
+
+class TestEntityRecord:
+    def test_record_structure(self, shield):
+        geo = np.array([[0, 0, 0], [1, 1, 1]])
+        rec = shield._entity_record(
+            "abc123", "POLYLINE", "LAYER-DRAFT", geo
+        )
+        assert rec["id"] == "abc123"
+        assert rec["type"] == "POLYLINE"
+        assert rec["layer"] == "LAYER-DRAFT"
+        assert rec["status"] == GeometryStatus.DRAFT.value
+        assert len(rec["source_hash"]) == 16
+
+    def test_source_hash_deterministic(self, shield):
+        geo = np.array([[1.0, 2.0, 3.0]])
+        r1 = shield._entity_record("a", "LINE", "L", geo)
+        r2 = shield._entity_record("b", "LINE", "L", geo)
+        assert r1["source_hash"] == r2["source_hash"]
+
+
+class TestDXFWriting:
+    def test_manual_fallback_writes_file(self, shield, sample_extraction, tmp_path):
+        out_path = tmp_path / "test.dxf"
+        manifest = shield._write_dxf_manual(sample_extraction, out_path)
+        assert out_path.exists()
+        assert manifest["format"] == "dxf"
+        assert manifest["entity_count"] >= 0
+        content = out_path.read_text()
+        assert "EOF" in content
+
+
+class TestPhaseRun:
+    @patch("totali.cad_shielding.shield.CADShield._write_dxf")
+    def test_run_produces_manifest(self, mock_write, shield, tmp_output, sample_extraction, sample_classification):
+        mock_write.side_effect = lambda ext, path: shield._write_dxf_manual(ext, path)
+        ctx = PipelineContext(
+            input_path="/f.las", output_dir=tmp_output,
+            extraction=sample_extraction,
+            crs=CRSMetadata(epsg_code=2231, is_valid=True),
+            stats=PointCloudStats(point_count=500),
+            classification=sample_classification,
+            input_hash="test123",
+        )
+        result = shield.run(ctx)
+        assert isinstance(result, PhaseResult)
+        assert result.phase == "shield"
+        assert result.success is True
+        assert "manifest" in result.data
+        assert "healing" in result.data
+        assert "dxf_path" in result.data
+
+    @patch("totali.cad_shielding.shield.CADShield._write_dxf")
+    def test_run_writes_output_files(self, mock_write, shield, tmp_output, sample_extraction, sample_classification):
+        mock_write.side_effect = lambda ext, path: shield._write_dxf_manual(ext, path)
+        ctx = PipelineContext(
+            input_path="/f.las", output_dir=tmp_output,
+            extraction=sample_extraction,
+            crs=CRSMetadata(epsg_code=2231, is_valid=True),
+            stats=PointCloudStats(point_count=500),
+            classification=sample_classification,
+            input_hash="x",
+        )
+        result = shield.run(ctx)
+        assert len(result.output_files) >= 1
+        manifest_file = tmp_output / "entity_manifest.json"
+        assert manifest_file.exists()
+        data = json.loads(manifest_file.read_text())
+        assert "entities" in data
+
+    def test_run_without_extraction_fails(self, shield, tmp_output):
+        ctx = PipelineContext(input_path="/f.las", output_dir=tmp_output)
+        result = shield.run(ctx)
+        assert result.success is False
+
+    @patch("totali.cad_shielding.shield.CADShield._write_dxf")
+    def test_all_entities_are_draft(self, mock_write, shield, tmp_output, sample_extraction, sample_classification):
+        mock_write.side_effect = lambda ext, path: shield._write_dxf_manual(ext, path)
+        ctx = PipelineContext(
+            input_path="/f.las", output_dir=tmp_output,
+            extraction=sample_extraction,
+            crs=CRSMetadata(epsg_code=2231, is_valid=True),
+            stats=PointCloudStats(point_count=500),
+            classification=sample_classification,
+            input_hash="x",
+        )
+        result = shield.run(ctx)
+        manifest = result.data["manifest"]
+        for entity in manifest.get("entities", []):
+            assert entity["status"] == "DRAFT"
