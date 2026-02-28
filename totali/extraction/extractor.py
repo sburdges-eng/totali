@@ -11,7 +11,7 @@ from pathlib import Path
 from typing import Optional
 
 import numpy as np
-from scipy.spatial import Delaunay
+from scipy.spatial import Delaunay, ConvexHull, QhullError
 from scipy.ndimage import uniform_filter1d
 
 from totali.pipeline.models import (
@@ -49,44 +49,43 @@ class DeterministicExtractor(PipelinePhase):
                 message="Missing point data or classification"
             )
 
-        result = ExtractionResult()
-
-        # Extract ground points for DTM
-        ground_mask = classification.labels == 2
+        # 1. Coordinate alignment (if needed)
+        # 2. Extract DTM (Ground points only)
+        ground_mask = classification.labels == 2  # ASPRS Standard Class 2
         ground_pts = xyz[ground_mask]
 
-        if len(ground_pts) < 10:
+        if len(ground_pts) < 100:
             return PhaseResult(
                 phase="extract", success=False,
-                message=f"Insufficient ground points: {len(ground_pts)}"
+                message=f"Insufficient ground points ({len(ground_pts)}) for DTM generation"
             )
 
-        self.audit.log("extract", {
-            "total_points": len(xyz),
-            "ground_points": len(ground_pts),
-        })
+        dtm_vertices, dtm_faces, dtm_metrics = self._build_dtm(ground_pts)
 
-        # 1. DTM / TIN generation
-        result.dtm_vertices, result.dtm_faces, dtm_metrics = self._build_dtm(ground_pts)
-        result.error_metrics["dtm"] = dtm_metrics
+        # 3. Extract Breaklines
+        breaklines, brk_metrics = self._extract_breaklines(ground_pts, dtm_vertices, dtm_faces)
 
-        # 2. Breakline extraction
-        result.breaklines, brk_metrics = self._extract_breaklines(
-            ground_pts, result.dtm_vertices, result.dtm_faces
+        # 4. Generate Contours
+        minor, index, cnt_metrics = self._generate_contours(dtm_vertices, dtm_faces)
+
+        # 5. Extract Planimetrics (Buildings, etc)
+        building_mask = classification.labels == 6  # ASPRS Class 6
+        curb_mask = classification.labels == 11
+        wire_mask = classification.labels == 14
+        hardscape_mask = classification.labels == 17
+
+        result = ExtractionResult(
+            dtm_vertices=dtm_vertices,
+            dtm_faces=dtm_faces,
+            breaklines=breaklines,
+            contours_minor=minor,
+            contours_index=index,
+            error_metrics={
+                "dtm": dtm_metrics,
+                "breaklines": brk_metrics,
+                "contours": cnt_metrics,
+            }
         )
-        result.error_metrics["breaklines"] = brk_metrics
-
-        # 3. Contour generation
-        result.contours_minor, result.contours_index, cnt_metrics = self._generate_contours(
-            result.dtm_vertices, result.dtm_faces
-        )
-        result.error_metrics["contours"] = cnt_metrics
-
-        # 4. Planimetric features
-        building_mask = classification.labels == 6
-        curb_mask = classification.labels == 64
-        wire_mask = np.isin(classification.labels, [13, 14])
-        hardscape_mask = classification.labels == 65
 
         if building_mask.any():
             result.building_footprints = self._extract_building_footprints(xyz[building_mask])
@@ -114,92 +113,46 @@ class DeterministicExtractor(PipelinePhase):
             "breaklines": len(result.breaklines),
             "contours_minor": len(result.contours_minor),
             "contours_index": len(result.contours_index),
-            "buildings": len(result.building_footprints),
-            "curbs": len(result.curb_lines),
-            "wires": len(result.wire_lines),
+            "building_footprints": len(result.building_footprints),
             "occlusion_zones": len(result.occlusion_zones),
-            "qa_flags": len(result.qa_flags),
-            "error_metrics": {
-                k: {kk: round(vv, 6) if isinstance(vv, float) else vv for kk, vv in v.items()}
-                for k, v in result.error_metrics.items()
-            },
+            "metrics": result.error_metrics,
         }
         with open(report_path, "w") as f:
             json.dump(report, f, indent=2)
 
-        self.audit.log("extract", {
-            "dtm_faces": report["dtm_faces"],
-            "breaklines": report["breaklines"],
-            "contours": report["contours_minor"] + report["contours_index"],
-            "qa_flags": report["qa_flags"],
-        })
-
         return PhaseResult(
             phase="extract",
             success=True,
-            message=f"Extracted DTM ({report['dtm_faces']} faces), "
-                    f"{report['breaklines']} breaklines, "
-                    f"{report['contours_minor']+report['contours_index']} contours",
-            data={
-                "extraction": result,
-                "crs": context.crs,
-                "stats": context.stats,
-                "classification": classification,
-                "points_xyz": xyz,
-                "input_hash": context.input_hash,
-            },
-            output_files=[report_path],
+            data={"extraction": result},
+            output_files=[report_path]
         )
 
     def _build_dtm(self, ground_pts: np.ndarray) -> tuple:
-        """Build Delaunay TIN from ground points with edge length filtering."""
+        """Construct Digital Terrain Model (TIN) via Delaunay triangulation."""
         max_edge = self.dtm_cfg.get("max_triangle_edge_length", 50.0)
-        thin_factor = self.dtm_cfg.get("thin_factor", 0.1)
 
-        # Optional thinning for very dense clouds
-        if thin_factor < 1.0 and len(ground_pts) > 100000:
-            idx = np.random.default_rng(42).choice(
-                len(ground_pts),
-                size=int(len(ground_pts) * thin_factor),
-                replace=False,
-            )
-            pts = ground_pts[idx]
-        else:
-            pts = ground_pts
+        # Delaunay on XY
+        tri = Delaunay(ground_pts[:, :2])
+        faces = tri.simplices
+        pts = ground_pts
 
-        # 2D Delaunay triangulation
-        tri = Delaunay(pts[:, :2])
+        # Filter large triangles (typically on bounds)
+        filtered_faces = []
+        all_edges = []
+        for f in faces:
+            v = pts[f]
+            e1 = np.linalg.norm(v[0] - v[1])
+            e2 = np.linalg.norm(v[1] - v[2])
+            e3 = np.linalg.norm(v[2] - v[0])
+            all_edges.extend([e1, e2, e3])
+            if e1 <= max_edge and e2 <= max_edge and e3 <= max_edge:
+                filtered_faces.append(f)
 
-        # Filter triangles by max edge length
-        valid_faces = []
-        for simplex in tri.simplices:
-            verts = pts[simplex]
-            edges = [
-                np.linalg.norm(verts[0] - verts[1]),
-                np.linalg.norm(verts[1] - verts[2]),
-                np.linalg.norm(verts[2] - verts[0]),
-            ]
-            if max(edges) <= max_edge:
-                valid_faces.append(simplex)
-
-        faces = np.array(valid_faces) if valid_faces else np.empty((0, 3), dtype=int)
-
-        # Error metrics
-        if len(faces) > 0:
-            # Compute face areas and edge stats
-            all_edges = []
-            for f in faces:
-                v = pts[f]
-                all_edges.extend([
-                    np.linalg.norm(v[0] - v[1]),
-                    np.linalg.norm(v[1] - v[2]),
-                    np.linalg.norm(v[2] - v[0]),
-                ])
-            all_edges = np.array(all_edges)
+        faces = np.array(filtered_faces)
+        if len(all_edges) > 0:
             metrics = {
                 "vertex_count": len(pts),
                 "face_count": len(faces),
-                "mean_edge_length": float(np.mean(all_edges)),
                 "max_edge_length": float(np.max(all_edges)),
                 "min_edge_length": float(np.min(all_edges)),
             }
@@ -334,11 +287,6 @@ class DeterministicExtractor(PipelinePhase):
         """Extract building footprints using alpha shapes / convex hulls."""
         min_area = self.plan_cfg.get("min_building_area_sqft", 100.0)
 
-        try:
-            from scipy.spatial import ConvexHull
-        except ImportError:
-            return []
-
         # Simple clustering by XY proximity
         clusters = self._cluster_points_2d(pts, radius=5.0)
         footprints = []
@@ -352,7 +300,12 @@ class DeterministicExtractor(PipelinePhase):
                 if area >= min_area:
                     hull_pts = cluster_pts[hull.vertices, :2]
                     footprints.append(hull_pts)
-            except Exception:
+            except QhullError as e:
+                self.audit.log("qhull_error", {
+                    "method": "_extract_building_footprints",
+                    "error": str(e),
+                    "cluster_size": len(cluster_pts)
+                })
                 continue
 
         return footprints
@@ -389,11 +342,15 @@ class DeterministicExtractor(PipelinePhase):
             if len(cluster_pts) < 4:
                 continue
             try:
-                from scipy.spatial import ConvexHull
                 hull = ConvexHull(cluster_pts[:, :2])
                 hull_pts = cluster_pts[hull.vertices, :2]
                 polygons.append(hull_pts)
-            except Exception:
+            except QhullError as e:
+                self.audit.log("qhull_error", {
+                    "method": "_extract_polygonal_features",
+                    "error": str(e),
+                    "cluster_size": len(cluster_pts)
+                })
                 continue
 
         return polygons
@@ -407,11 +364,15 @@ class DeterministicExtractor(PipelinePhase):
             if len(cluster_pts) < 3:
                 continue
             try:
-                from scipy.spatial import ConvexHull
                 hull = ConvexHull(cluster_pts[:, :2])
                 hull_pts = cluster_pts[hull.vertices, :2]
                 zones.append(hull_pts)
-            except Exception:
+            except QhullError as e:
+                self.audit.log("qhull_error", {
+                    "method": "_build_occlusion_zones",
+                    "error": str(e),
+                    "cluster_size": len(cluster_pts)
+                })
                 continue
 
         return zones
