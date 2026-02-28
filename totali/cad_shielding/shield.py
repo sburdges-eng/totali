@@ -1,21 +1,23 @@
 """
 Phase 4: CAD Shielding
-=======================
-"Build around, not through" – middleware isolation prevents CAD kernel crashes.
-Geometry quarantine/healing ensures watertight, topologically sane inserts.
-All output goes to DRAFT layers only.
+======================
+Final geometry validation, georeferencing audit, and DXF conversion.
+Enforces the 'Trust but Verify' boundary between ML results and CAD artifacts.
+Ensures that only 'DRAFT' status geometry enters the surveyor review loop.
 """
 
+import hashlib
 import json
 import uuid
-import hashlib
 from pathlib import Path
-from typing import Optional
 
 import numpy as np
 
 from totali.pipeline.models import (
-    PhaseResult, ExtractionResult, HealingReport, GeometryStatus
+    PhaseResult,
+    ExtractionResult,
+    HealingReport,
+    GeometryStatus,
 )
 from totali.pipeline.base_phase import PipelinePhase
 from totali.pipeline.context import PipelineContext
@@ -25,65 +27,49 @@ from totali.audit.logger import AuditLogger
 class CADShield(PipelinePhase):
     def __init__(self, config: dict, audit: AuditLogger):
         super().__init__(config, audit)
-        self.format = config.get("format", "dxf")
-        self.healing_cfg = config.get("geometry_healing", {})
         self.layer_map = config.get("layer_mapping", {})
-        self.timeout = config.get("middleware_timeout_sec", 30)
-        self.max_retry = config.get("max_retry", 3)
+        self.healing_cfg = config.get("geometry_healing", {})
 
-    def validate_inputs(self, context: PipelineContext) -> tuple[bool, list[str]]:
-        errors: list[str] = []
+    def validate_inputs(self, context: PipelineContext) -> tuple:
+        """Ensure previous phase (Extraction) has produced geometry."""
+        errors = []
         if context.extraction is None:
-            errors.append("extraction missing; run extract phase first")
+            errors.append("Missing extraction results from Phase 3.")
         return len(errors) == 0, errors
 
     def run(self, context: PipelineContext) -> PhaseResult:
-        extraction: ExtractionResult | None = context.extraction
-        output_dir = Path(context.output_dir)
+        """
+        Validate, heal, and georeference extraction results.
+        Writes the final DXF artifact and an entity manifest.
+        """
+        extraction = context.extraction
+        output_dir = context.output_dir
+        stem = Path(context.input_path).stem
 
-        if extraction is None:
-            return PhaseResult(
-                phase="shield", success=False,
-                message="No extraction data in context"
-            )
-
-        # Geometry healing pass
+        # 1. Geometry Healing / Quarantine
         healing = self._heal_geometry(extraction)
-
-        self.audit.log("heal", {
-            "input_entities": healing.input_entity_count,
+        self.audit.log("geometry_healing_complete", {
             "healed": healing.healed_count,
             "quarantined": healing.quarantined_count,
             "passed": healing.passed_count,
         })
 
-        # Write to DXF
-        dxf_path = output_dir / "totali_draft_output.dxf"
-        entity_manifest = self._write_dxf(extraction, dxf_path)
+        # 2. DXF Generation
+        dxf_path = output_dir / f"{stem}_draft.dxf"
+        entity_manifest = self._write_dxf(extraction, dxf_path, context)
 
-        # Write entity manifest (chain of custody)
+        # 3. Save Manifest
         manifest_path = output_dir / "entity_manifest.json"
         with open(manifest_path, "w") as f:
-            json.dump(entity_manifest, f, indent=2)
-
-        # Log every insert
-        for entity in entity_manifest.get("entities", []):
-            self.audit.log("insert", {
-                "entity_id": entity["id"],
-                "layer": entity["layer"],
-                "type": entity["type"],
-                "status": GeometryStatus.DRAFT.value,
-                "source_hash": entity.get("source_hash", ""),
-            })
+            json.dump(entity_manifest, f, indent=4)
 
         return PhaseResult(
             phase="shield",
             success=True,
-            message=f"DXF written with {len(entity_manifest.get('entities', []))} entities "
-                    f"(healed: {healing.healed_count}, quarantined: {healing.quarantined_count})",
             data={
-                "dxf_path": str(dxf_path),
                 "manifest": entity_manifest,
+                "dxf_path": str(dxf_path),
+                "manifest_path": str(manifest_path),
                 "healing": healing,
                 "extraction": extraction,
                 "crs": context.crs,
@@ -164,15 +150,17 @@ class CADShield(PipelinePhase):
 
         return report
 
-    def _write_dxf(self, extraction: ExtractionResult, path: Path) -> dict:
+    def _write_dxf(self, extraction: ExtractionResult, path: Path, context: PipelineContext) -> dict:
         """Write extraction results to DXF with proper layer mapping."""
         try:
             import ezdxf
-            return self._write_dxf_ezdxf(extraction, path)
+            if not hasattr(ezdxf, "new"):
+                return self._write_dxf_manual(extraction, path, context)
+            return self._write_dxf_ezdxf(extraction, path, context)
         except ImportError:
-            return self._write_dxf_manual(extraction, path)
+            return self._write_dxf_manual(extraction, path, context)
 
-    def _write_dxf_ezdxf(self, extraction: ExtractionResult, path: Path) -> dict:
+    def _write_dxf_ezdxf(self, extraction: ExtractionResult, path: Path, context: PipelineContext) -> dict:
         """Write DXF using ezdxf library."""
         import ezdxf
 
@@ -196,7 +184,7 @@ class CADShield(PipelinePhase):
                         dxfattribs={"layer": layer},
                     )
                     entities.append(self._entity_record(
-                        entity_id, "3DFACE", layer, v
+                        entity_id, "3DFACE", layer, v, context
                     ))
                 except Exception:
                     pass
@@ -210,7 +198,7 @@ class CADShield(PipelinePhase):
                     [tuple(p) for p in line],
                     dxfattribs={"layer": layer},
                 )
-                entities.append(self._entity_record(entity_id, "POLYLINE", layer, line))
+                entities.append(self._entity_record(entity_id, "POLYLINE", layer, line, context))
             except Exception:
                 pass
 
@@ -227,7 +215,7 @@ class CADShield(PipelinePhase):
                         [tuple(p) for p in seg],
                         dxfattribs={"layer": layer},
                     )
-                    entities.append(self._entity_record(entity_id, "LWPOLYLINE", layer, seg))
+                    entities.append(self._entity_record(entity_id, "LWPOLYLINE", layer, seg, context))
                 except Exception:
                     pass
 
@@ -239,7 +227,7 @@ class CADShield(PipelinePhase):
                 pts = [tuple(p) for p in poly]
                 pts.append(pts[0])  # close polygon
                 msp.add_lwpolyline(pts, close=True, dxfattribs={"layer": layer})
-                entities.append(self._entity_record(entity_id, "POLYGON", layer, poly))
+                entities.append(self._entity_record(entity_id, "POLYGON", layer, poly, context))
             except Exception:
                 pass
 
@@ -252,7 +240,7 @@ class CADShield(PipelinePhase):
                     [tuple(p) for p in line],
                     dxfattribs={"layer": layer},
                 )
-                entities.append(self._entity_record(entity_id, "POLYLINE", layer, line))
+                entities.append(self._entity_record(entity_id, "POLYLINE", layer, line, context))
             except Exception:
                 pass
 
@@ -265,7 +253,7 @@ class CADShield(PipelinePhase):
                     [tuple(p) for p in line],
                     dxfattribs={"layer": layer},
                 )
-                entities.append(self._entity_record(entity_id, "POLYLINE", layer, line))
+                entities.append(self._entity_record(entity_id, "POLYLINE", layer, line, context))
             except Exception:
                 pass
 
@@ -277,7 +265,7 @@ class CADShield(PipelinePhase):
                 pts = [tuple(p) for p in poly]
                 pts.append(pts[0])
                 msp.add_lwpolyline(pts, close=True, dxfattribs={"layer": layer})
-                entities.append(self._entity_record(entity_id, "OCCLUSION_ZONE", layer, poly))
+                entities.append(self._entity_record(entity_id, "OCCLUSION_ZONE", layer, poly, context))
             except Exception:
                 pass
 
@@ -290,7 +278,7 @@ class CADShield(PipelinePhase):
             "entities": entities,
         }
 
-    def _write_dxf_manual(self, extraction: ExtractionResult, path: Path) -> dict:
+    def _write_dxf_manual(self, extraction: ExtractionResult, path: Path, context: PipelineContext) -> dict:
         """Minimal DXF writer fallback when ezdxf is not available."""
         entities = []
         lines = [
@@ -310,7 +298,7 @@ class CADShield(PipelinePhase):
                     "10", str(p0[0]), "20", str(p0[1]), "30", str(p0[2]),
                     "11", str(p1[0]), "21", str(p1[1]), "31", str(p1[2]),
                 ])
-                entities.append(self._entity_record(entity_id, "LINE", layer, brk))
+                entities.append(self._entity_record(entity_id, "LINE", layer, brk, context))
 
         lines.extend(["0", "ENDSEC", "0", "EOF"])
 
@@ -328,14 +316,23 @@ class CADShield(PipelinePhase):
         return uuid.uuid4().hex[:12]
 
     def _entity_record(
-        self, entity_id: str, entity_type: str, layer: str, geometry
+        self, entity_id: str, entity_type: str, layer: str, geometry, context: PipelineContext,
+        confidence=None, rule_engine_passed=True, provenance=None
     ) -> dict:
         """Create an entity record for the manifest / audit trail."""
         geo_bytes = geometry.tobytes() if isinstance(geometry, np.ndarray) else str(geometry).encode()
+
+        # Use provided confidence or fallback to context mean confidence
+        if confidence is None and context.classification:
+            confidence = float(context.classification.mean_confidence)
+
         return {
             "id": entity_id,
             "type": entity_type,
             "layer": layer,
             "status": GeometryStatus.DRAFT.value,
             "source_hash": hashlib.sha256(geo_bytes).hexdigest()[:16],
+            "confidence": confidence or 0.0,
+            "rule_engine_passed": rule_engine_passed,
+            "provenance": provenance or {},
         }

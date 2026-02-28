@@ -222,13 +222,19 @@ class DeterministicExtractor(PipelinePhase):
         if len(faces) < 2:
             return breaklines, {"count": 0}
 
-        # Compute face normals
-        normals = np.zeros((len(faces), 3))
-        for i, f in enumerate(faces):
-            v0, v1, v2 = vertices[f[0]], vertices[f[1]], vertices[f[2]]
-            n = np.cross(v1 - v0, v2 - v0)
-            norm = np.linalg.norm(n)
-            normals[i] = n / norm if norm > 1e-10 else [0, 0, 1]
+        # Compute face normals (vectorized)
+        v0 = vertices[faces[:, 0]]
+        v1 = vertices[faces[:, 1]]
+        v2 = vertices[faces[:, 2]]
+        n_vec = np.cross(v1 - v0, v2 - v0)
+        norms = np.linalg.norm(n_vec, axis=1, keepdims=True)
+
+        # Handle zero/small norms to avoid div by zero (fallback to [0, 0, 1])
+        normals = np.where(
+            norms > 1e-10,
+            n_vec / (norms + 1e-20),
+            np.array([0, 0, 1.0])
+        )
 
         # Build edge-to-face adjacency
         edge_faces = {}
