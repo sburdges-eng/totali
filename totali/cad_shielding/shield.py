@@ -1,95 +1,72 @@
 """
 Phase 4: CAD Shielding
-=======================
-"Build around, not through" – middleware isolation prevents CAD kernel crashes.
-Geometry quarantine/healing ensures watertight, topologically sane inserts.
-All output goes to DRAFT layers only.
+======================
+Isolates the CAD environment from the raw AI outputs, providing geometry
+healing, isolation, and audit trail registration before human review.
 """
 
+import hashlib
 import json
 import uuid
-import hashlib
 from pathlib import Path
-from typing import Optional
 
 import numpy as np
 
-from totali.pipeline.models import (
-    PhaseResult, ExtractionResult, HealingReport, GeometryStatus
-)
+from totali.audit.logger import AuditLogger
 from totali.pipeline.base_phase import PipelinePhase
 from totali.pipeline.context import PipelineContext
-from totali.audit.logger import AuditLogger
+from totali.pipeline.models import (
+    PhaseResult,
+    ExtractionResult,
+    HealingReport,
+    GeometryStatus,
+)
 
 
 class CADShield(PipelinePhase):
     def __init__(self, config: dict, audit: AuditLogger):
         super().__init__(config, audit)
-        self.format = config.get("format", "dxf")
-        self.healing_cfg = config.get("geometry_healing", {})
-        self.layer_map = config.get("layer_mapping", {})
-        self.timeout = config.get("middleware_timeout_sec", 30)
-        self.max_retry = config.get("max_retry", 3)
+        self.healing_cfg = self.config.get("geometry_healing", {})
+        self.layer_map = self.config.get("layer_mapping", {})
 
-    def validate_inputs(self, context: PipelineContext) -> tuple[bool, list[str]]:
-        errors: list[str] = []
-        if context.extraction is None:
-            errors.append("extraction missing; run extract phase first")
+    def validate_inputs(self, ctx: PipelineContext) -> tuple[bool, list[str]]:
+        errors = []
+        if ctx.extraction is None:
+            errors.append("extraction result missing from context")
         return len(errors) == 0, errors
 
-    def run(self, context: PipelineContext) -> PhaseResult:
-        extraction: ExtractionResult | None = context.extraction
-        output_dir = Path(context.output_dir)
+    def run(self, ctx: PipelineContext) -> PhaseResult:
+        self.audit.log("shield_start", {"input": ctx.input_path})
 
-        if extraction is None:
-            return PhaseResult(
-                phase="shield", success=False,
-                message="No extraction data in context"
-            )
+        if ctx.extraction is None:
+            return PhaseResult(phase="shield", success=False, message="Extraction missing")
 
-        # Geometry healing pass
+        extraction: ExtractionResult = ctx.extraction
+
+        # 1. Heal and validate geometry
         healing = self._heal_geometry(extraction)
 
-        self.audit.log("heal", {
-            "input_entities": healing.input_entity_count,
-            "healed": healing.healed_count,
-            "quarantined": healing.quarantined_count,
-            "passed": healing.passed_count,
-        })
+        # 2. Generate isolation DXF (DRAFT layers)
+        dxf_path = Path(ctx.output_dir) / f"{Path(ctx.input_path).stem}_draft.dxf"
+        entity_manifest = self._write_dxf(extraction, dxf_path, ctx)
 
-        # Write to DXF
-        dxf_path = output_dir / "totali_draft_output.dxf"
-        entity_manifest = self._write_dxf(extraction, dxf_path)
-
-        # Write entity manifest (chain of custody)
-        manifest_path = output_dir / "entity_manifest.json"
+        # 3. Create manifest and audit record
+        manifest_path = Path(ctx.output_dir) / "entity_manifest.json"
         with open(manifest_path, "w") as f:
             json.dump(entity_manifest, f, indent=2)
-
-        # Log every insert
-        for entity in entity_manifest.get("entities", []):
-            self.audit.log("insert", {
-                "entity_id": entity["id"],
-                "layer": entity["layer"],
-                "type": entity["type"],
-                "status": GeometryStatus.DRAFT.value,
-                "source_hash": entity.get("source_hash", ""),
-            })
 
         return PhaseResult(
             phase="shield",
             success=True,
-            message=f"DXF written with {len(entity_manifest.get('entities', []))} entities "
-                    f"(healed: {healing.healed_count}, quarantined: {healing.quarantined_count})",
             data={
                 "dxf_path": str(dxf_path),
                 "manifest": entity_manifest,
                 "healing": healing,
                 "extraction": extraction,
-                "crs": context.crs,
-                "stats": context.stats,
-                "classification": context.classification,
-                "input_hash": context.input_hash,
+                "crs": ctx.crs,
+                "stats": ctx.stats,
+                "classification": ctx.classification,
+                "input_hash": ctx.input_hash,
             },
             output_files=[dxf_path, manifest_path],
         )
@@ -164,15 +141,15 @@ class CADShield(PipelinePhase):
 
         return report
 
-    def _write_dxf(self, extraction: ExtractionResult, path: Path) -> dict:
+    def _write_dxf(self, extraction: ExtractionResult, path: Path, ctx: PipelineContext) -> dict:
         """Write extraction results to DXF with proper layer mapping."""
         try:
             import ezdxf
-            return self._write_dxf_ezdxf(extraction, path)
+            return self._write_dxf_ezdxf(extraction, path, ctx)
         except ImportError:
-            return self._write_dxf_manual(extraction, path)
+            return self._write_dxf_manual(extraction, path, ctx)
 
-    def _write_dxf_ezdxf(self, extraction: ExtractionResult, path: Path) -> dict:
+    def _write_dxf_ezdxf(self, extraction: ExtractionResult, path: Path, ctx: PipelineContext) -> dict:
         """Write DXF using ezdxf library."""
         import ezdxf
 
@@ -290,7 +267,7 @@ class CADShield(PipelinePhase):
             "entities": entities,
         }
 
-    def _write_dxf_manual(self, extraction: ExtractionResult, path: Path) -> dict:
+    def _write_dxf_manual(self, extraction: ExtractionResult, path: Path, ctx: PipelineContext) -> dict:
         """Minimal DXF writer fallback when ezdxf is not available."""
         entities = []
         lines = [
@@ -328,7 +305,8 @@ class CADShield(PipelinePhase):
         return uuid.uuid4().hex[:12]
 
     def _entity_record(
-        self, entity_id: str, entity_type: str, layer: str, geometry
+        self, entity_id: str, entity_type: str, layer: str, geometry,
+        confidence: float = 0.0, rule_engine_passed: bool = True, provenance: dict = None
     ) -> dict:
         """Create an entity record for the manifest / audit trail."""
         geo_bytes = geometry.tobytes() if isinstance(geometry, np.ndarray) else str(geometry).encode()
@@ -338,4 +316,7 @@ class CADShield(PipelinePhase):
             "layer": layer,
             "status": GeometryStatus.DRAFT.value,
             "source_hash": hashlib.sha256(geo_bytes).hexdigest()[:16],
+            "confidence": confidence,
+            "rule_engine_passed": rule_engine_passed,
+            "provenance": provenance or {},
         }

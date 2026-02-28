@@ -1,205 +1,123 @@
 """
 Phase 3: Deterministic Extraction
-==================================
-Authoritative geometry generation from classified points.
-Uses deterministic algorithms only – no generative AI, no hallucinated surfaces.
-Produces measurable error metrics and QA flags.
+=================================
+Builds a Digital Terrain Model (TIN) from classified ground points and
+extracts secondary geometric artifacts (contours, breaklines, planimetrics).
 """
 
-import json
+import logging
+import pickle
 from pathlib import Path
-from typing import Optional
+from typing import Any
 
 import numpy as np
 from scipy.spatial import Delaunay
-from scipy.ndimage import uniform_filter1d
 
-from totali.pipeline.models import (
-    PhaseResult, ExtractionResult, ClassificationResult
-)
+from totali.audit.logger import AuditLogger
 from totali.pipeline.base_phase import PipelinePhase
 from totali.pipeline.context import PipelineContext
-from totali.audit.logger import AuditLogger
+from totali.pipeline.models import PhaseResult, ExtractionResult, ClassificationResult
 
 
 class DeterministicExtractor(PipelinePhase):
     def __init__(self, config: dict, audit: AuditLogger):
         super().__init__(config, audit)
-        self.dtm_cfg = config.get("dtm", {})
-        self.brk_cfg = config.get("breaklines", {})
-        self.cnt_cfg = config.get("contours", {})
-        self.plan_cfg = config.get("planimetrics", {})
+        self.dtm_cfg = self.config.get("dtm", {})
+        self.brk_cfg = self.config.get("breaklines", {})
+        self.cnt_cfg = self.config.get("contours", {})
+        self.plan_cfg = self.config.get("planimetrics", {})
 
-    def validate_inputs(self, context: PipelineContext) -> tuple[bool, list[str]]:
-        errors: list[str] = []
-        if context.points_xyz is None:
-            errors.append("points_xyz missing; run geodetic phase first")
-        if context.classification is None:
-            errors.append("classification missing; run segment phase first")
+    def validate_inputs(self, ctx: PipelineContext) -> tuple[bool, list[str]]:
+        errors = []
+        if ctx.points_xyz is None:
+            errors.append("points_xyz missing from context")
+        if ctx.classification is None:
+            errors.append("classification result missing from context")
         return len(errors) == 0, errors
 
-    def run(self, context: PipelineContext) -> PhaseResult:
-        xyz = context.points_xyz
-        classification: ClassificationResult | None = context.classification
-        output_dir = Path(context.output_dir)
+    def run(self, ctx: PipelineContext) -> PhaseResult:
+        self.audit.log("extraction_start", {"input": ctx.input_path})
 
-        if xyz is None or classification is None:
+        # 1. Filter ground points
+        ground_mask = ctx.classification.labels == 2  # ASPRS standard for Ground
+        ground_pts = ctx.points_xyz[ground_mask]
+
+        if len(ground_pts) < 3:
             return PhaseResult(
-                phase="extract", success=False,
-                message="Missing point data or classification"
+                phase="extract",
+                success=False,
+                message=f"Insufficient ground points ({len(ground_pts)}) for triangulation",
             )
 
-        result = ExtractionResult()
+        # 2. Build DTM (TIN)
+        vertices, faces, dtm_metrics = self._build_dtm(ground_pts)
 
-        # Extract ground points for DTM
-        ground_mask = classification.labels == 2
-        ground_pts = xyz[ground_mask]
+        # 3. Extract Breaklines
+        breaklines, brk_metrics = self._extract_breaklines(ground_pts, vertices, faces)
 
-        if len(ground_pts) < 10:
-            return PhaseResult(
-                phase="extract", success=False,
-                message=f"Insufficient ground points: {len(ground_pts)}"
-            )
+        # 4. Generate Contours
+        minor_cnt, index_cnt, cnt_metrics = self._generate_contours(vertices, faces)
 
-        self.audit.log("extract", {
-            "total_points": len(xyz),
-            "ground_points": len(ground_pts),
-        })
-
-        # 1. DTM / TIN generation
-        result.dtm_vertices, result.dtm_faces, dtm_metrics = self._build_dtm(ground_pts)
-        result.error_metrics["dtm"] = dtm_metrics
-
-        # 2. Breakline extraction
-        result.breaklines, brk_metrics = self._extract_breaklines(
-            ground_pts, result.dtm_vertices, result.dtm_faces
+        # 5. Extract Planimetrics (Buildings, Hardscape)
+        buildings = self._extract_building_footprints(
+            ctx.points_xyz[ctx.classification.labels == 6]
         )
-        result.error_metrics["breaklines"] = brk_metrics
 
-        # 3. Contour generation
-        result.contours_minor, result.contours_index, cnt_metrics = self._generate_contours(
-            result.dtm_vertices, result.dtm_faces
+        # 6. Accumulate results
+        result = ExtractionResult(
+            dtm_vertices=vertices,
+            dtm_faces=faces,
+            breaklines=breaklines,
+            contours_minor=minor_cnt,
+            contours_index=index_cnt,
+            building_footprints=buildings,
+            occlusion_zones=self._build_occlusion_zones(
+                ctx.points_xyz[ctx.classification.occlusion_mask]
+            ),
+            error_metrics={"dtm": dtm_metrics, "breaklines": brk_metrics, "contours": cnt_metrics},
         )
-        result.error_metrics["contours"] = cnt_metrics
 
-        # 4. Planimetric features
-        building_mask = classification.labels == 6
-        curb_mask = classification.labels == 64
-        wire_mask = np.isin(classification.labels, [13, 14])
-        hardscape_mask = classification.labels == 65
-
-        if building_mask.any():
-            result.building_footprints = self._extract_building_footprints(xyz[building_mask])
-        if curb_mask.any():
-            result.curb_lines = self._extract_linear_features(xyz[curb_mask], "curb")
-        if wire_mask.any():
-            result.wire_lines = self._extract_linear_features(xyz[wire_mask], "wire")
-        if hardscape_mask.any():
-            result.hardscape_polygons = self._extract_polygonal_features(xyz[hardscape_mask])
-
-        # 5. Occlusion zones
-        if classification.occlusion_mask is not None:
-            occluded = xyz[classification.occlusion_mask]
-            if len(occluded) > 0:
-                result.occlusion_zones = self._build_occlusion_zones(occluded)
-
-        # 6. QA flags
-        result.qa_flags = self._generate_qa_flags(result, classification)
-
-        # Write extraction report
-        report_path = output_dir / "extraction_report.json"
-        report = {
-            "dtm_vertices": len(result.dtm_vertices) if result.dtm_vertices is not None else 0,
-            "dtm_faces": len(result.dtm_faces) if result.dtm_faces is not None else 0,
-            "breaklines": len(result.breaklines),
-            "contours_minor": len(result.contours_minor),
-            "contours_index": len(result.contours_index),
-            "buildings": len(result.building_footprints),
-            "curbs": len(result.curb_lines),
-            "wires": len(result.wire_lines),
-            "occlusion_zones": len(result.occlusion_zones),
-            "qa_flags": len(result.qa_flags),
-            "error_metrics": {
-                k: {kk: round(vv, 6) if isinstance(vv, float) else vv for kk, vv in v.items()}
-                for k, v in result.error_metrics.items()
-            },
-        }
-        with open(report_path, "w") as f:
-            json.dump(report, f, indent=2)
-
-        self.audit.log("extract", {
-            "dtm_faces": report["dtm_faces"],
-            "breaklines": report["breaklines"],
-            "contours": report["contours_minor"] + report["contours_index"],
-            "qa_flags": report["qa_flags"],
-        })
+        # 7. Generate QA Flags
+        result.qa_flags = self._generate_qa_flags(result, ctx.classification)
 
         return PhaseResult(
             phase="extract",
             success=True,
-            message=f"Extracted DTM ({report['dtm_faces']} faces), "
-                    f"{report['breaklines']} breaklines, "
-                    f"{report['contours_minor']+report['contours_index']} contours",
-            data={
-                "extraction": result,
-                "crs": context.crs,
-                "stats": context.stats,
-                "classification": classification,
-                "points_xyz": xyz,
-                "input_hash": context.input_hash,
-            },
-            output_files=[report_path],
+            data={"extraction": result},
+            output_files=[self._save_extraction(result, ctx)],
         )
 
-    def _build_dtm(self, ground_pts: np.ndarray) -> tuple:
-        """Build Delaunay TIN from ground points with edge length filtering."""
+    def _save_extraction(self, result: ExtractionResult, ctx: PipelineContext) -> Path:
+        path = Path(ctx.output_dir) / f"{Path(ctx.input_path).stem}_extraction.pkl"
+        with open(path, "wb") as f:
+            pickle.dump(result, f)
+        return path
+
+    def _build_dtm(self, pts: np.ndarray) -> tuple:
+        """Build Delaunay Triangulation and prune long edges."""
         max_edge = self.dtm_cfg.get("max_triangle_edge_length", 50.0)
-        thin_factor = self.dtm_cfg.get("thin_factor", 0.1)
 
-        # Optional thinning for very dense clouds
-        if thin_factor < 1.0 and len(ground_pts) > 100000:
-            idx = np.random.default_rng(42).choice(
-                len(ground_pts),
-                size=int(len(ground_pts) * thin_factor),
-                replace=False,
-            )
-            pts = ground_pts[idx]
-        else:
-            pts = ground_pts
-
-        # 2D Delaunay triangulation
+        # 2D triangulation (XY)
         tri = Delaunay(pts[:, :2])
+        faces = tri.simplices
 
-        # Filter triangles by max edge length
-        valid_faces = []
-        for simplex in tri.simplices:
-            verts = pts[simplex]
-            edges = [
-                np.linalg.norm(verts[0] - verts[1]),
-                np.linalg.norm(verts[1] - verts[2]),
-                np.linalg.norm(verts[2] - verts[0]),
-            ]
-            if max(edges) <= max_edge:
-                valid_faces.append(simplex)
+        # Filter faces by edge length to avoid interpolation over large gaps
+        v0 = pts[faces[:, 0]]
+        v1 = pts[faces[:, 1]]
+        v2 = pts[faces[:, 2]]
 
-        faces = np.array(valid_faces) if valid_faces else np.empty((0, 3), dtype=int)
+        e0 = np.linalg.norm(v1 - v0, axis=1)
+        e1 = np.linalg.norm(v2 - v1, axis=1)
+        e2 = np.linalg.norm(v0 - v2, axis=1)
 
-        # Error metrics
+        valid_mask = (e0 <= max_edge) & (e1 <= max_edge) & (e2 <= max_edge)
+        faces = faces[valid_mask]
+
         if len(faces) > 0:
-            # Compute face areas and edge stats
-            all_edges = []
-            for f in faces:
-                v = pts[f]
-                all_edges.extend([
-                    np.linalg.norm(v[0] - v[1]),
-                    np.linalg.norm(v[1] - v[2]),
-                    np.linalg.norm(v[2] - v[0]),
-                ])
-            all_edges = np.array(all_edges)
+            all_edges = np.concatenate([e0[valid_mask], e1[valid_mask], e2[valid_mask]])
             metrics = {
                 "vertex_count": len(pts),
                 "face_count": len(faces),
-                "mean_edge_length": float(np.mean(all_edges)),
                 "max_edge_length": float(np.max(all_edges)),
                 "min_edge_length": float(np.min(all_edges)),
             }
@@ -222,31 +140,71 @@ class DeterministicExtractor(PipelinePhase):
         if len(faces) < 2:
             return breaklines, {"count": 0}
 
-        # Compute face normals
-        normals = np.zeros((len(faces), 3))
-        for i, f in enumerate(faces):
-            v0, v1, v2 = vertices[f[0]], vertices[f[1]], vertices[f[2]]
-            n = np.cross(v1 - v0, v2 - v0)
-            norm = np.linalg.norm(n)
-            normals[i] = n / norm if norm > 1e-10 else [0, 0, 1]
+        # Vectorized face normal computation
+        v0 = vertices[faces[:, 0]]
+        v1 = vertices[faces[:, 1]]
+        v2 = vertices[faces[:, 2]]
 
-        # Build edge-to-face adjacency
-        edge_faces = {}
-        for fi, f in enumerate(faces):
-            for e in [(f[0], f[1]), (f[1], f[2]), (f[2], f[0])]:
-                key = tuple(sorted(e))
-                edge_faces.setdefault(key, []).append(fi)
+        raw_normals = np.cross(v1 - v0, v2 - v0)
+        norms = np.linalg.norm(raw_normals, axis=1, keepdims=True)
 
-        # Find breakline edges: adjacent faces with significant slope change
+        normals = np.zeros_like(raw_normals)
+        mask = (norms > 1e-10).flatten()
+        normals[mask] = raw_normals[mask] / norms[mask]
+        normals[~mask] = [0.0, 0.0, 1.0]
+
+        # Vectorized edge-to-face adjacency
+        # Extract all edges and sort vertices within each edge
+        all_edges = np.concatenate([
+            faces[:, [0, 1]],
+            faces[:, [1, 2]],
+            faces[:, [2, 0]]
+        ], axis=0)
+        all_edges.sort(axis=1)
+
+        # Keep track of which face each edge came from
+        edge_to_face = np.tile(np.arange(len(faces)), 3)
+
+        # Sort edges lexicographically to bring duplicates together
+        order = np.lexsort((all_edges[:, 1], all_edges[:, 0]))
+        sorted_edges = all_edges[order]
+        sorted_faces = edge_to_face[order]
+
+        # Find where new edges start in the sorted list
+        edge_diff = np.any(sorted_edges[1:] != sorted_edges[:-1], axis=1)
+        edge_starts = np.concatenate(([0], np.where(edge_diff)[0] + 1))
+        edge_counts = np.diff(np.concatenate((edge_starts, [len(sorted_edges)])))
+
+        # Only process edges shared by exactly two faces (internal edges)
+        pair_indices = np.where(edge_counts == 2)[0]
+        if pair_indices.size == 0:
+            return [], {"count": 0, "total_edges_checked": len(edge_starts), "breakline_edges_found": 0}
+
+        pair_starts = edge_starts[pair_indices]
+
+        f0 = sorted_faces[pair_starts]
+        f1 = sorted_faces[pair_starts + 1]
+
+        # Compute angles between adjacent face normals
+        dot_products = np.sum(normals[f0] * normals[f1], axis=1)
+        angles = np.arccos(np.clip(dot_products, -1.0, 1.0))
+
+        # Compute edge lengths
+        v0_idx = sorted_edges[pair_starts, 0]
+        v1_idx = sorted_edges[pair_starts, 1]
+        edge_lens = np.linalg.norm(vertices[v1_idx] - vertices[v0_idx], axis=1)
+
+        # Filter by threshold
+        breakline_mask = (angles > min_angle) & (edge_lens >= min_length)
+
         breakline_edges = []
-        for (v0, v1), face_ids in edge_faces.items():
-            if len(face_ids) == 2:
-                angle = np.arccos(
-                    np.clip(np.dot(normals[face_ids[0]], normals[face_ids[1]]), -1, 1)
-                )
-                edge_len = np.linalg.norm(vertices[v0] - vertices[v1])
-                if angle > min_angle and edge_len >= min_length:
-                    breakline_edges.append((v0, v1, angle, edge_len))
+        for i in np.where(breakline_mask)[0]:
+            breakline_edges.append((
+                int(v0_idx[i]),
+                int(v1_idx[i]),
+                float(angles[i]),
+                float(edge_lens[i])
+            ))
 
         # Chain connected edges into polylines
         if breakline_edges:
@@ -255,7 +213,7 @@ class DeterministicExtractor(PipelinePhase):
 
         metrics = {
             "count": len(breaklines),
-            "total_edges_checked": len(edge_faces),
+            "total_edges_checked": len(edge_starts),
             "breakline_edges_found": len(breakline_edges),
         }
         return breaklines, metrics
