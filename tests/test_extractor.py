@@ -137,6 +137,37 @@ class TestQAFlags:
         assert len(occ_flags) == 1
 
 
+class TestBuildingFootprints:
+    def test_extract_building_footprints_successful(self, extractor):
+        # Square building 20x20 (area 400 > min_area 100)
+        # Points are placed to fall into the same grid cell for _cluster_points_2d (grid_size=10)
+        pts = np.array([
+            [0, 0, 10], [1, 0, 10], [1, 1, 10], [0, 1, 10],
+            [0.5, 0.5, 10], [0.2, 0.2, 10]
+        ])
+        # Temporary lower min_area to match the small square
+        extractor.plan_cfg["min_building_area_sqft"] = 0.5
+        footprints = extractor._extract_building_footprints(pts)
+        assert len(footprints) == 1
+        assert len(footprints[0]) == 4
+
+    def test_extract_building_footprints_skips_small_clusters(self, extractor):
+        # Only 3 points - should be skipped
+        pts = np.array([
+            [0, 0, 10], [1, 0, 10], [0, 1, 10]
+        ])
+        footprints = extractor._extract_building_footprints(pts)
+        assert len(footprints) == 0
+
+    def test_extract_building_footprints_handles_convex_hull_error(self, extractor):
+        # Collinear points - should cause ConvexHull to fail
+        pts = np.array([
+            [0, 0, 10], [1, 1, 10], [2, 2, 10], [3, 3, 10], [4, 4, 10]
+        ])
+        footprints = extractor._extract_building_footprints(pts)
+        assert len(footprints) == 0
+
+
 class TestPhaseRun:
     def test_run_end_to_end(self, extractor, pipeline_context):
         result = extractor.run(pipeline_context)
