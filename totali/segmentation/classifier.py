@@ -56,8 +56,7 @@ class PointCloudClassifier(PipelinePhase):
 
         try:
             import onnxruntime as ort
-            providers = ["CUDAExecutionProvider", "CPUExecutionProvider"] \
-                if self.device == "cuda" else ["CPUExecutionProvider"]
+            providers = ["CUDAExecutionProvider", "CPUExecutionProvider"]                 if self.device == "cuda" else ["CPUExecutionProvider"]
             self.session = ort.InferenceSession(str(model_file), providers=providers)
             return True
         except ImportError:
@@ -135,22 +134,25 @@ class PointCloudClassifier(PipelinePhase):
         features = self._build_features(xyz, las)
 
         input_name = self.session.get_inputs()[0].name
+        num_features = features.shape[1]
+
+        # Pre-allocate batch buffer for ONNX (shape: [1, batch_size, num_features])
+        # Reuse this buffer to avoid repeated allocations and vstack/newaxis overhead.
+        batch_buffer = np.zeros((1, self.batch_size, num_features), dtype=np.float32)
 
         for start in range(0, n, self.batch_size):
             end = min(start + self.batch_size, n)
-            batch = features[start:end].astype(np.float32)
+            batch_len = end - start
 
-            # Pad if model expects fixed batch size
-            if len(batch) < self.batch_size:
-                pad = np.zeros((self.batch_size - len(batch), batch.shape[1]), dtype=np.float32)
-                batch_padded = np.vstack([batch, pad])
-            else:
-                batch_padded = batch
+            # Update buffer with current batch data
+            batch_buffer[0, :batch_len] = features[start:end]
+            if batch_len < self.batch_size:
+                batch_buffer[0, batch_len:] = 0.0  # Ensure padding area is zeroed
 
-            outputs = self.session.run(None, {input_name: batch_padded[np.newaxis]})
+            outputs = self.session.run(None, {input_name: batch_buffer})
 
             # outputs[0] shape: (1, batch_size, num_classes)
-            probs = outputs[0][0][:end - start]
+            probs = outputs[0][0][:batch_len]
             all_labels[start:end] = np.argmax(probs, axis=1)
             all_confs[start:end] = np.max(probs, axis=1)
 
@@ -206,7 +208,7 @@ class PointCloudClassifier(PipelinePhase):
 
     def _build_features(self, xyz: np.ndarray, las) -> np.ndarray:
         """Build feature matrix for ML model: XYZ + optional intensity/returns."""
-        features = [xyz]
+        features = [xyz.astype(np.float32)]
 
         if hasattr(las, "intensity"):
             intensity = np.array(las.intensity, dtype=np.float32).reshape(-1, 1)
@@ -223,7 +225,7 @@ class PointCloudClassifier(PipelinePhase):
             nret = nret / max(nret.max(), 1.0)
             features.append(nret)
 
-        return np.hstack(features)
+        return np.hstack(features).astype(np.float32)
 
     def _detect_occlusions(
         self, xyz: np.ndarray, result: ClassificationResult
