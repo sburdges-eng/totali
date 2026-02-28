@@ -161,3 +161,29 @@ class TestPhaseRun:
         result = extractor.run(ctx)
         assert result.success is False
         assert "ground" in result.message.lower() or "Insufficient" in result.message
+
+class TestEdgeChaining:
+    def test_chain_edges_basic(self, extractor):
+        vertices = np.array([
+            [0.0, 0.0, 0.0],
+            [1.0, 0.0, 0.0],
+            [1.0, 1.0, 0.0],
+        ])
+        # edge: (v0, v1, angle, length)
+        edges = [
+            (0, 1, 0.1, 1.0),
+            (1, 2, 0.2, 1.0),
+        ]
+        chains = extractor._chain_edges(edges, vertices)
+
+        assert len(chains) == 2
+        assert isinstance(chains[0], np.ndarray)
+        assert chains[0].shape == (2, 3)
+        np.testing.assert_array_almost_equal(chains[0], [[0, 0, 0], [1, 0, 0]])
+        np.testing.assert_array_almost_equal(chains[1], [[1, 0, 0], [1, 1, 0]])
+
+    def test_chain_edges_empty(self, extractor):
+        vertices = np.empty((0, 3))
+        edges = []
+        chains = extractor._chain_edges(edges, vertices)
+        assert chains == []
