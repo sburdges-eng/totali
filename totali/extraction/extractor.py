@@ -288,8 +288,20 @@ class DeterministicExtractor(PipelinePhase):
         z_start = np.ceil(z_min / interval) * interval
         elevations = np.arange(z_start, z_max, interval)
 
+        # Pre-calculate face Z bounds for filtering
+        face_z = vertices[faces][:, :, 2]
+        face_z_min = face_z.min(axis=1)
+        face_z_max = face_z.max(axis=1)
+
         for elev in elevations:
-            segments = self._contour_at_elevation(vertices, faces, elev)
+            # Filter faces that span this elevation
+            mask = (face_z_min < elev) & (face_z_max > elev)
+            active_faces = faces[mask]
+
+            if len(active_faces) == 0:
+                continue
+
+            segments = self._contour_at_elevation(vertices, active_faces, elev)
             if segments:
                 if abs(elev % index_interval) < 0.01:
                     index_contours.extend(segments)
@@ -309,26 +321,55 @@ class DeterministicExtractor(PipelinePhase):
         self, vertices: np.ndarray, faces: np.ndarray, elev: float
     ) -> list:
         """Extract contour line segments at a given elevation from TIN."""
-        segments = []
+        if len(faces) == 0:
+            return []
 
-        for face in faces:
-            v = vertices[face]
-            z = v[:, 2]
+        v_all = vertices[faces]  # (N, 3, 3)
+        z_all = v_all[:, :, 2]   # (N, 3)
 
-            # Find edges that cross this elevation
-            crossings = []
-            for i in range(3):
-                j = (i + 1) % 3
-                if (z[i] - elev) * (z[j] - elev) < 0:
-                    # Linear interpolation
-                    t = (elev - z[i]) / (z[j] - z[i])
-                    pt = v[i] + t * (v[j] - v[i])
-                    crossings.append(pt[:2])  # XY only for contour
+        # Edge vertex indices
+        i_idx = np.array([0, 1, 2])
+        j_idx = np.array([1, 2, 0])
 
-            if len(crossings) == 2:
-                segments.append(np.array(crossings))
+        zi = z_all[:, i_idx]
+        zj = z_all[:, j_idx]
 
-        return segments
+        # Crossing condition: spans elevation strictly
+        cross_mask = (zi - elev) * (zj - elev) < 0
+
+        # Only process faces with exactly 2 crossings (marching triangles)
+        # If a vertex is exactly on elev, we might get 1 or 3 crossings depending on how we handle ties
+        # But for TIN contours, 2 is standard.
+        face_mask = np.sum(cross_mask, axis=1) == 2
+        if not np.any(face_mask):
+            return []
+
+        v = v_all[face_mask]
+        zi_active = zi[face_mask]
+        zj_active = zj[face_mask]
+        cross_mask_active = cross_mask[face_mask]
+
+        # For each face, get the indices of the two crossing edges
+        edge_indices = np.zeros((len(v), 2), dtype=int)
+        for i in range(len(v)):
+             edge_indices[i] = np.where(cross_mask_active[i])[0]
+
+        pts = []
+        row_idx = np.arange(len(v))
+        for k in range(2):
+            e_i = edge_indices[:, k]
+            e_j = (e_i + 1) % 3
+
+            v_i = v[row_idx, e_i]
+            v_j = v[row_idx, e_j]
+            z_i = zi_active[row_idx, e_i]
+            z_j = zj_active[row_idx, e_i]
+
+            t = (elev - z_i) / (z_j - z_i)
+            pt = v_i[:, :2] + t[:, np.newaxis] * (v_j[:, :2] - v_i[:, :2])
+            pts.append(pt)
+
+        return list(np.stack(pts, axis=1))
 
     def _extract_building_footprints(self, pts: np.ndarray) -> list:
         """Extract building footprints using alpha shapes / convex hulls."""
