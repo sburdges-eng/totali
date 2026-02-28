@@ -161,3 +161,59 @@ class TestPhaseRun:
         result = extractor.run(ctx)
         assert result.success is False
         assert "ground" in result.message.lower() or "Insufficient" in result.message
+
+
+class TestBuildingFootprints:
+    def test_extract_footprints_handles_convex_hull_failure(self, extractor):
+        """Ensure loop continues if ConvexHull fails (e.g., collinear points)."""
+        # Valid cluster (all in one 10x10 grid cell)
+        valid_cluster = np.array([
+            [1, 1, 150], [4, 1, 150], [4, 4, 150], [1, 4, 150]
+        ])
+        # Collinear cluster (all in one 10x10 grid cell, but ConvexHull fails)
+        collinear_cluster = np.array([
+            [51, 51, 150], [52, 52, 150], [53, 53, 150], [54, 54, 150]
+        ])
+
+        # Combine into points that will be clustered separately
+        pts = np.vstack([valid_cluster, collinear_cluster])
+
+        # Area of valid cluster: 3x3 = 9
+        extractor.plan_cfg["min_building_area_sqft"] = 5.0
+
+        footprints = extractor._extract_building_footprints(pts)
+
+        # Should only have 1 footprint (the valid one)
+        assert len(footprints) == 1
+        # Check area of valid footprint
+        from scipy.spatial import ConvexHull
+        hull = ConvexHull(footprints[0])
+        assert hull.volume >= 5.0
+
+    def test_extract_footprints_skips_small_area(self, extractor):
+        """Ensure clusters with small area are skipped."""
+        small_cluster = np.array([
+            [1, 1, 150], [2, 1, 150], [2, 2, 150], [1, 2, 150]
+        ])
+        # Area = 1.0
+        extractor.plan_cfg["min_building_area_sqft"] = 10.0
+
+        footprints = extractor._extract_building_footprints(small_cluster)
+        assert len(footprints) == 0
+
+    def test_extract_footprints_import_error(self, extractor, monkeypatch):
+        """Ensure empty list is returned if scipy.spatial.ConvexHull cannot be imported."""
+        # Patch builtins.__import__ to raise ImportError for scipy.spatial
+        import builtins
+        real_import = builtins.__import__
+
+        def mock_import(name, *args, **kwargs):
+            if name == 'scipy.spatial':
+                raise ImportError("Mocked import error")
+            return real_import(name, *args, **kwargs)
+
+        monkeypatch.setattr(builtins, "__import__", mock_import)
+
+        pts = np.array([[1, 1, 150], [4, 1, 150], [4, 4, 150], [1, 4, 150]])
+        footprints = extractor._extract_building_footprints(pts)
+        assert footprints == []
