@@ -67,11 +67,10 @@ class AuditLogger:
         record["hash"] = record_hash
         self._prev_hash = record_hash
 
-        # Append to JSONL with restrictive permissions
-        file_exists = self.log_path.exists()
-        with open(self.log_path, "a") as f:
-            if not file_exists:
-                os.chmod(self.log_path, 0o600)
+        # Append to JSONL with restrictive permissions (atomic create)
+        flags = os.O_APPEND | os.O_CREAT | os.O_WRONLY
+        fd = os.open(self.log_path, flags, 0o600)
+        with os.fdopen(fd, "a") as f:
             f.write(json.dumps(record, default=str) + "\n")
 
     def verify_chain(self) -> tuple[bool, list]:
