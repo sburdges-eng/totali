@@ -162,38 +162,20 @@ class PointCloudClassifier(PipelinePhase):
         Not as accurate as ML but deterministic and always available.
         """
         n = len(xyz)
-        labels = np.zeros(n, dtype=np.int32)  # default: unclassified
-        confidences = np.full(n, 0.5, dtype=np.float32)
-
         z = xyz[:, 2]
         z_min, z_max = z.min(), z.max()
         z_range = z_max - z_min if z_max > z_min else 1.0
         z_norm = (z - z_min) / z_range
 
-        # Ground: lowest 15% of elevation
-        ground_mask = z_norm < 0.15
-        labels[ground_mask] = 2
-        confidences[ground_mask] = 0.6
+        # Use np.digitize to categorize into bins: <0.15, 0.15-0.3, 0.3-0.5, 0.5-0.8, >=0.8
+        bins = np.array([0.15, 0.30, 0.50, 0.80])
+        indices = np.digitize(z_norm, bins)
 
-        # Low vegetation: 15-30%
-        low_veg = (z_norm >= 0.15) & (z_norm < 0.30)
-        labels[low_veg] = 3
-        confidences[low_veg] = 0.45
+        label_map = np.array([2, 3, 4, 5, 6], dtype=np.int32)
+        conf_map = np.array([0.6, 0.45, 0.40, 0.35, 0.35], dtype=np.float32)
 
-        # Medium vegetation: 30-50%
-        med_veg = (z_norm >= 0.30) & (z_norm < 0.50)
-        labels[med_veg] = 4
-        confidences[med_veg] = 0.40
-
-        # High vegetation: 50-80%
-        high_veg = (z_norm >= 0.50) & (z_norm < 0.80)
-        labels[high_veg] = 5
-        confidences[high_veg] = 0.35
-
-        # Building candidates: high + clustered (simplified)
-        high_pts = z_norm >= 0.80
-        labels[high_pts] = 6
-        confidences[high_pts] = 0.35
+        labels = label_map[indices]
+        confidences = conf_map[indices]
 
         # Use existing classification if available
         if hasattr(las, "classification"):
