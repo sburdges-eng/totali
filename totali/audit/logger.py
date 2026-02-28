@@ -22,9 +22,9 @@ class AuditLogger:
     ):
         self.log_dir = Path(log_dir)
         self.log_dir.mkdir(parents=True, exist_ok=True)
-        self.project_id = project_id
+        self.project_id = os.path.basename(project_id)
         self.hash_algo = hash_algo
-        self.log_path = self.log_dir / f"{project_id}_{datetime.now().strftime('%Y%m%d_%H%M%S')}.jsonl"
+        self.log_path = self.log_dir / f"{self.project_id}_{datetime.now().strftime('%Y%m%d_%H%M%S')}.jsonl"
         self._prev_hash = "0" * 64  # genesis block
         self._seq = 0
 
