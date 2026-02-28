@@ -9,6 +9,7 @@ Usage:
 import click
 import yaml
 import sys
+import re
 from pathlib import Path
 from datetime import datetime
 
@@ -41,6 +42,8 @@ def main(input_path, config_path, phase, output_dir, project_id, dry_run):
     output_path.mkdir(parents=True, exist_ok=True)
 
     project_id = project_id or f"TOTaLi_{datetime.now().strftime('%Y%m%d_%H%M%S')}"
+    if not re.match(r'^[a-zA-Z0-9_-]+$', project_id):
+        raise click.BadParameter(f"Invalid project-id: {project_id}. Only alphanumeric, underscore, and hyphen allowed.")
 
     # Init audit logger
     audit = AuditLogger(
