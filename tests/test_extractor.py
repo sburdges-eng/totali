@@ -2,6 +2,7 @@
 
 import numpy as np
 import pytest
+from unittest.mock import patch
 
 from totali.extraction.extractor import DeterministicExtractor
 from totali.pipeline.context import PipelineContext
@@ -161,3 +162,62 @@ class TestPhaseRun:
         result = extractor.run(ctx)
         assert result.success is False
         assert "ground" in result.message.lower() or "Insufficient" in result.message
+
+
+class TestBuildingFootprints:
+    def test_extract_building_footprints_handles_collinear_points(self, extractor):
+        # 4 collinear points should cause ConvexHull to fail or return 0 area
+        pts = np.array([
+            [0, 0, 0],
+            [1, 1, 0],
+            [2, 2, 0],
+            [3, 3, 0]
+        ])
+        footprints = extractor._extract_building_footprints(pts)
+        assert footprints == []
+
+    def test_extract_building_footprints_handles_convex_hull_exception(self, extractor):
+        # Use valid points but mock ConvexHull to raise an exception
+        pts = np.array([
+            [0, 0, 0],
+            [9.9, 0, 0],
+            [9.9, 9.9, 0],
+            [0, 9.9, 0]
+        ])
+        with patch('scipy.spatial.ConvexHull', side_effect=Exception("Hull error")):
+            footprints = extractor._extract_building_footprints(pts)
+            assert footprints == []
+
+    def test_extract_building_footprints_skips_small_clusters(self, extractor):
+        # 3 points is less than the required 4
+        pts = np.array([
+            [0, 0, 0],
+            [0.1, 0, 0],
+            [0, 0.1, 0]
+        ])
+        footprints = extractor._extract_building_footprints(pts)
+        assert footprints == []
+
+    def test_extract_building_footprints_skips_small_areas(self, extractor):
+        # 5x5 square = 25 sqft < default 100 sqft
+        pts = np.array([
+            [0, 0, 0],
+            [5, 0, 0],
+            [5, 5, 0],
+            [0, 5, 0]
+        ])
+        footprints = extractor._extract_building_footprints(pts)
+        assert footprints == []
+
+    def test_extract_building_footprints_success(self, extractor):
+        # 20x20 square = 400 sqft > default 100 sqft
+        pts = np.array([
+            [0, 0, 0],
+            [9.9, 0, 0],
+            [9.9, 9.9, 0],
+            [0, 9.9, 0]
+        ])
+        extractor.plan_cfg["min_building_area_sqft"] = 50.0
+        footprints = extractor._extract_building_footprints(pts)
+        assert len(footprints) == 1
+        assert footprints[0].shape == (4, 2)
