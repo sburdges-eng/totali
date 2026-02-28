@@ -1,0 +1,155 @@
+<<<<<<< SEARCH
+import json
+from pathlib import Path
+from typing import Optional
+
+import numpy as np
+from scipy.spatial import Delaunay
+from scipy.ndimage import uniform_filter1d
+
+from totali.pipeline.models import (
+=======
+import json
+import logging
+from pathlib import Path
+from typing import Optional
+
+import numpy as np
+from scipy.spatial import Delaunay, ConvexHull, QhullError
+from scipy.ndimage import uniform_filter1d
+
+from totali.pipeline.models import (
+>>>>>>> REPLACE
+<<<<<<< SEARCH
+    def _extract_building_footprints(self, pts: np.ndarray) -> list:
+        """Extract building footprints using alpha shapes / convex hulls."""
+        min_area = self.plan_cfg.get("min_building_area_sqft", 100.0)
+
+        try:
+            from scipy.spatial import ConvexHull
+        except ImportError:
+            return []
+
+        # Simple clustering by XY proximity
+        clusters = self._cluster_points_2d(pts, radius=5.0)
+        footprints = []
+
+        for cluster_pts in clusters:
+            if len(cluster_pts) < 4:
+                continue
+            try:
+                hull = ConvexHull(cluster_pts[:, :2])
+                area = hull.volume  # 2D ConvexHull.volume = area
+                if area >= min_area:
+                    hull_pts = cluster_pts[hull.vertices, :2]
+                    footprints.append(hull_pts)
+            except Exception:
+                continue
+
+        return footprints
+=======
+    def _extract_building_footprints(self, pts: np.ndarray) -> list:
+        """Extract building footprints using alpha shapes / convex hulls."""
+        min_area = self.plan_cfg.get("min_building_area_sqft", 100.0)
+
+        # Simple clustering by XY proximity
+        clusters = self._cluster_points_2d(pts, radius=5.0)
+        footprints = []
+
+        for cluster_pts in clusters:
+            if len(cluster_pts) < 4:
+                continue
+            try:
+                hull = ConvexHull(cluster_pts[:, :2])
+                area = hull.volume  # 2D ConvexHull.volume = area
+                if area >= min_area:
+                    hull_pts = cluster_pts[hull.vertices, :2]
+                    footprints.append(hull_pts)
+            except (QhullError, ValueError) as e:
+                self.audit.log(
+                    "extract_cluster_skipped",
+                    {"feature": "building", "reason": str(e), "points": len(cluster_pts)},
+                )
+                continue
+
+        return footprints
+>>>>>>> REPLACE
+<<<<<<< SEARCH
+    def _extract_polygonal_features(self, pts: np.ndarray) -> list:
+        """Extract polygonal features (hardscape) via convex hull clustering."""
+        clusters = self._cluster_points_2d(pts, radius=3.0)
+        polygons = []
+
+        for cluster_pts in clusters:
+            if len(cluster_pts) < 4:
+                continue
+            try:
+                from scipy.spatial import ConvexHull
+                hull = ConvexHull(cluster_pts[:, :2])
+                hull_pts = cluster_pts[hull.vertices, :2]
+                polygons.append(hull_pts)
+            except Exception:
+                continue
+
+        return polygons
+
+    def _build_occlusion_zones(self, occluded_pts: np.ndarray) -> list:
+        """Build occlusion zone polygons from occluded points."""
+        clusters = self._cluster_points_2d(occluded_pts, radius=10.0)
+        zones = []
+
+        for cluster_pts in clusters:
+            if len(cluster_pts) < 3:
+                continue
+            try:
+                from scipy.spatial import ConvexHull
+                hull = ConvexHull(cluster_pts[:, :2])
+                hull_pts = cluster_pts[hull.vertices, :2]
+                zones.append(hull_pts)
+            except Exception:
+                continue
+
+        return zones
+=======
+    def _extract_polygonal_features(self, pts: np.ndarray) -> list:
+        """Extract polygonal features (hardscape) via convex hull clustering."""
+        clusters = self._cluster_points_2d(pts, radius=3.0)
+        polygons = []
+
+        for cluster_pts in clusters:
+            if len(cluster_pts) < 4:
+                continue
+            try:
+                hull = ConvexHull(cluster_pts[:, :2])
+                hull_pts = cluster_pts[hull.vertices, :2]
+                polygons.append(hull_pts)
+            except (QhullError, ValueError) as e:
+                self.audit.log(
+                    "extract_cluster_skipped",
+                    {"feature": "polygonal", "reason": str(e), "points": len(cluster_pts)},
+                )
+                continue
+
+        return polygons
+
+    def _build_occlusion_zones(self, occluded_pts: np.ndarray) -> list:
+        """Build occlusion zone polygons from occluded points."""
+        clusters = self._cluster_points_2d(occluded_pts, radius=10.0)
+        zones = []
+
+        for cluster_pts in clusters:
+            if len(cluster_pts) < 3:
+                continue
+            try:
+                hull = ConvexHull(cluster_pts[:, :2])
+                hull_pts = cluster_pts[hull.vertices, :2]
+                zones.append(hull_pts)
+            except (QhullError, ValueError) as e:
+                self.audit.log(
+                    "extract_cluster_skipped",
+                    {"feature": "occlusion", "reason": str(e), "points": len(cluster_pts)},
+                )
+                continue
+
+        return zones
+>>>>>>> REPLACE
