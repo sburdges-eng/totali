@@ -56,8 +56,7 @@ class PointCloudClassifier(PipelinePhase):
 
         try:
             import onnxruntime as ort
-            providers = ["CUDAExecutionProvider", "CPUExecutionProvider"] \
-                if self.device == "cuda" else ["CPUExecutionProvider"]
+            providers = ["CUDAExecutionProvider", "CPUExecutionProvider"]                 if self.device == "cuda" else ["CPUExecutionProvider"]
             self.session = ort.InferenceSession(str(model_file), providers=providers)
             return True
         except ImportError:
@@ -97,10 +96,11 @@ class PointCloudClassifier(PipelinePhase):
         result.low_confidence_count = int(np.sum(result.confidences < self.confidence_threshold))
         result.mean_confidence = float(np.mean(result.confidences))
 
-        unique, counts = np.unique(result.labels, return_counts=True)
+        counts = np.bincount(result.labels)
+        unique_labels = np.nonzero(counts)[0]
         result.class_counts = {
-            self.classes.get(int(k), f"class_{k}"): int(v)
-            for k, v in zip(unique, counts)
+            self.classes.get(int(k), f"class_{k}"): int(counts[k])
+            for k in unique_labels
         }
 
         self.audit.log("classify", {
