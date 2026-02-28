@@ -38,7 +38,7 @@ class AuditLogger:
         self.log_path = (self.log_dir / filename).resolve()
 
         # Ensure log_path is within log_dir
-        if not str(self.log_path).startswith(str(self.log_dir)):
+        if not self.log_path.is_relative_to(self.log_dir):
             raise ValueError(f"Insecure log path generated: {self.log_path}")
 
         self._prev_hash = "0" * 64  # genesis block
