@@ -90,6 +90,12 @@ class TestOcclusionCheck:
         assert result == OcclusionType.UNKNOWN
 
 
+    def test_empty_occlusion_zones_returns_none(self, linter):
+        entity = {"id": "x", "layer": "L"}
+        ext = ExtractionResult(occlusion_zones=[])
+        result = linter._check_occlusion(entity, ext)
+        assert result == OcclusionType.NONE
+
 class TestLintReport:
     def test_report_structure(self, linter, sample_classification):
         items = [
