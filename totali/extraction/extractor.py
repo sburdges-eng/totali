@@ -347,12 +347,19 @@ class DeterministicExtractor(PipelinePhase):
             if len(cluster_pts) < 4:
                 continue
             try:
+                from scipy.spatial.qhull import QhullError
+                import logging
+            except ImportError:
+                QhullError = Exception
+
+            try:
                 hull = ConvexHull(cluster_pts[:, :2])
                 area = hull.volume  # 2D ConvexHull.volume = area
                 if area >= min_area:
                     hull_pts = cluster_pts[hull.vertices, :2]
                     footprints.append(hull_pts)
-            except Exception:
+            except (QhullError, ValueError) as e:
+                logging.warning("Skipping building footprint extraction for cluster due to hull computation failure: %s", e)
                 continue
 
         return footprints
