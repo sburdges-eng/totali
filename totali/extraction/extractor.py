@@ -114,14 +114,17 @@ class DeterministicExtractor(PipelinePhase):
             valid_mask = (e0 <= max_len) & (e1 <= max_len) & (e2 <= max_len)
             faces = faces[valid_mask]
 
-            all_edges = np.concatenate([e0[valid_mask], e1[valid_mask], e2[valid_mask]])
-            metrics = {
-                "vertex_count": len(vertices),
-                "face_count": len(faces),
-                "mean_edge_length": float(np.mean(all_edges)),
-                "max_edge_length": float(np.max(all_edges)),
-                "min_edge_length": float(np.min(all_edges)),
-            }
+            if len(faces) > 0:
+                all_edges = np.concatenate([e0[valid_mask], e1[valid_mask], e2[valid_mask]])
+                metrics = {
+                    "vertex_count": len(vertices),
+                    "face_count": len(faces),
+                    "mean_edge_length": float(np.mean(all_edges)),
+                    "max_edge_length": float(np.max(all_edges)),
+                    "min_edge_length": float(np.min(all_edges)),
+                }
+            else:
+                metrics = {"vertex_count": len(vertices), "face_count": 0}
         else:
             metrics = {"vertex_count": len(vertices), "face_count": len(faces)}
 
@@ -298,7 +301,7 @@ class DeterministicExtractor(PipelinePhase):
                 continue
             try:
                 hull = ConvexHull(cluster_pts[:, :2])
-                if hull.area >= min_area:
+                if hull.volume >= min_area:
                     footprints.append(cluster_pts[hull.vertices][:, :2])
             except Exception:
                 continue
