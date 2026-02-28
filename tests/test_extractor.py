@@ -161,3 +161,46 @@ class TestPhaseRun:
         result = extractor.run(ctx)
         assert result.success is False
         assert "ground" in result.message.lower() or "Insufficient" in result.message
+
+class TestBuildingFootprints:
+    def test_extract_building_footprints_happy_path(self, extractor):
+        # 20x20 building = 400 sqft > 100 sqft
+        # XY proximity (radius=5.0) means points should be within 10 units for grid clustering
+        pts = np.array([
+            [0, 0, 10], [1, 0, 10], [1, 1, 10], [0, 1, 10],
+            [20, 20, 10], [21, 20, 10], [21, 21, 10], [20, 21, 10]
+        ])
+        # This will form TWO clusters since (0,0) and (20,20) are far apart.
+        # But each cluster is only 1x1 = 1 sqft < 100 sqft.
+        # Let's make ONE cluster that is large.
+        pts = np.array([
+            [0, 0, 10], [2, 0, 10], [2, 2, 10], [0, 2, 10],
+            [4, 0, 10], [4, 2, 10], [4, 4, 10], [0, 4, 10],
+            [2, 4, 10]
+        ])
+        # Grid keys at (0,0), (0,0), (0,0), (0,0), (0,0), (0,0), (0,0), (0,0), (0,0) with radius 5.0 (grid_size 10.0)
+        # 4x4 building = 16 sqft. Still < 100 sqft.
+        # Let's set min_area to 10.0 for the test.
+        extractor.plan_cfg["min_building_area_sqft"] = 10.0
+        footprints = extractor._extract_building_footprints(pts)
+        assert len(footprints) == 1
+        assert len(footprints[0]) >= 4
+
+    def test_extract_building_footprints_collinear_failure(self, extractor):
+        # Collinear points cause ConvexHull to fail.
+        # radius=5.0, grid_size=10.0. These will be in the same cluster.
+        pts = np.array([
+            [0, 0, 10], [1, 0, 10], [2, 0, 10], [3, 0, 10]
+        ])
+        footprints = extractor._extract_building_footprints(pts)
+        assert footprints == []
+
+    def test_extract_building_footprints_small_area(self, extractor):
+        # 2x2 building = 4 sqft < 100 sqft
+        pts = np.array([
+            [0, 0, 10], [2, 0, 10], [2, 2, 10], [0, 2, 10],
+            [1, 1, 10]
+        ])
+        extractor.plan_cfg["min_building_area_sqft"] = 100.0
+        footprints = extractor._extract_building_footprints(pts)
+        assert footprints == []
