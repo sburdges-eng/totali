@@ -148,3 +148,46 @@ class TestSummary:
         assert s["chain_valid"] is True
         assert s["first_event"] is not None
         assert s["last_event"] is not None
+
+
+class TestSecurityValidation:
+    """Tests for project_id validation and filesystem permissions."""
+
+    def test_rejects_path_traversal_project_id(self, tmp_path):
+        with pytest.raises(ValueError, match="Invalid project_id"):
+            AuditLogger(log_dir=str(tmp_path), project_id="../etc/passwd")
+
+    def test_rejects_slash_in_project_id(self, tmp_path):
+        with pytest.raises(ValueError, match="Invalid project_id"):
+            AuditLogger(log_dir=str(tmp_path), project_id="foo/bar")
+
+    def test_rejects_dot_dot_project_id(self, tmp_path):
+        with pytest.raises(ValueError, match="Invalid project_id"):
+            AuditLogger(log_dir=str(tmp_path), project_id="..")
+
+    def test_rejects_space_in_project_id(self, tmp_path):
+        with pytest.raises(ValueError, match="Invalid project_id"):
+            AuditLogger(log_dir=str(tmp_path), project_id="my project")
+
+    def test_accepts_valid_project_ids(self, tmp_path):
+        for pid in ["test", "my-project", "proj_v2", "ABC123", "a-b_c-1"]:
+            logger = AuditLogger(log_dir=str(tmp_path / pid), project_id=pid)
+            assert logger.project_id == pid
+
+    def test_new_log_dir_has_restrictive_permissions(self, tmp_path):
+        log_dir = tmp_path / "secure_logs"
+        AuditLogger(log_dir=str(log_dir), project_id="p1")
+        mode = log_dir.stat().st_mode & 0o777
+        assert mode == 0o700
+
+    def test_log_file_has_restrictive_permissions(self, tmp_path):
+        logger = AuditLogger(log_dir=str(tmp_path), project_id="p1")
+        logger.log("test_event")
+        mode = logger.log_path.stat().st_mode & 0o777
+        assert mode == 0o600
+
+    def test_rejects_file_as_log_dir(self, tmp_path):
+        file_path = tmp_path / "not_a_dir"
+        file_path.write_text("I am a file")
+        with pytest.raises(NotADirectoryError):
+            AuditLogger(log_dir=str(file_path), project_id="p1")
