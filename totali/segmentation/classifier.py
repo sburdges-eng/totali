@@ -206,24 +206,34 @@ class PointCloudClassifier(PipelinePhase):
 
     def _build_features(self, xyz: np.ndarray, las) -> np.ndarray:
         """Build feature matrix for ML model: XYZ + optional intensity/returns."""
-        features = [xyz]
+        n_points = xyz.shape[0]
+        has_intensity = hasattr(las, "intensity")
+        has_return_num = hasattr(las, "return_number")
+        has_num_returns = hasattr(las, "number_of_returns")
 
-        if hasattr(las, "intensity"):
-            intensity = np.array(las.intensity, dtype=np.float32).reshape(-1, 1)
-            intensity = intensity / max(intensity.max(), 1.0)
-            features.append(intensity)
+        n_cols = 3 + int(has_intensity) + int(has_return_num) + int(has_num_returns)
+        out_dtype = np.promote_types(xyz.dtype, np.float32)
+        features = np.empty((n_points, n_cols), dtype=out_dtype)
 
-        if hasattr(las, "return_number"):
-            ret = np.array(las.return_number, dtype=np.float32).reshape(-1, 1)
-            ret = ret / max(ret.max(), 1.0)
-            features.append(ret)
+        features[:, :3] = xyz
 
-        if hasattr(las, "number_of_returns"):
-            nret = np.array(las.number_of_returns, dtype=np.float32).reshape(-1, 1)
-            nret = nret / max(nret.max(), 1.0)
-            features.append(nret)
+        curr_col = 3
+        if has_intensity:
+            intensity = np.array(las.intensity, dtype=np.float32)
+            features[:, curr_col] = intensity / max(intensity.max(), 1.0)
+            curr_col += 1
 
-        return np.hstack(features)
+        if has_return_num:
+            ret = np.array(las.return_number, dtype=np.float32)
+            features[:, curr_col] = ret / max(ret.max(), 1.0)
+            curr_col += 1
+
+        if has_num_returns:
+            nret = np.array(las.number_of_returns, dtype=np.float32)
+            features[:, curr_col] = nret / max(nret.max(), 1.0)
+            curr_col += 1
+
+        return features
 
     def _detect_occlusions(
         self, xyz: np.ndarray, result: ClassificationResult
