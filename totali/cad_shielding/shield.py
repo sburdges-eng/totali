@@ -59,7 +59,7 @@ class CADShield(PipelinePhase):
 
         # Write to DXF
         dxf_path = output_dir / "totali_draft_output.dxf"
-        entity_manifest = self._write_dxf(extraction, dxf_path)
+        entity_manifest = self._write_dxf(extraction, dxf_path, context)
 
         # Write entity manifest (chain of custody)
         manifest_path = output_dir / "entity_manifest.json"
@@ -164,15 +164,15 @@ class CADShield(PipelinePhase):
 
         return report
 
-    def _write_dxf(self, extraction: ExtractionResult, path: Path) -> dict:
+    def _write_dxf(self, extraction: ExtractionResult, path: Path, context: PipelineContext) -> dict:
         """Write extraction results to DXF with proper layer mapping."""
         try:
             import ezdxf
-            return self._write_dxf_ezdxf(extraction, path)
+            return self._write_dxf_ezdxf(extraction, path, context)
         except ImportError:
-            return self._write_dxf_manual(extraction, path)
+            return self._write_dxf_manual(extraction, path, context)
 
-    def _write_dxf_ezdxf(self, extraction: ExtractionResult, path: Path) -> dict:
+    def _write_dxf_ezdxf(self, extraction: ExtractionResult, path: Path, context: PipelineContext) -> dict:
         """Write DXF using ezdxf library."""
         import ezdxf
 
@@ -183,6 +183,12 @@ class CADShield(PipelinePhase):
         # Create layers
         for layer_name in self.layer_map.values():
             doc.layers.add(layer_name)
+
+        # Metadata provenance
+        prov = {
+            "input_hash": context.input_hash,
+            "crs": context.crs.epsg_code if context.crs else None,
+        }
 
         # DTM as 3DFACE entities
         if extraction.dtm_vertices is not None and extraction.dtm_faces is not None:
@@ -196,7 +202,10 @@ class CADShield(PipelinePhase):
                         dxfattribs={"layer": layer},
                     )
                     entities.append(self._entity_record(
-                        entity_id, "3DFACE", layer, v
+                        entity_id, "3DFACE", layer, v,
+                        confidence=context.classification.mean_confidence if context.classification else 1.0,
+                        rule_engine_passed=True,
+                        provenance=prov,
                     ))
                 except Exception:
                     pass
@@ -210,7 +219,12 @@ class CADShield(PipelinePhase):
                     [tuple(p) for p in line],
                     dxfattribs={"layer": layer},
                 )
-                entities.append(self._entity_record(entity_id, "POLYLINE", layer, line))
+                entities.append(self._entity_record(
+                    entity_id, "POLYLINE", layer, line,
+                    confidence=context.classification.mean_confidence if context.classification else 1.0,
+                    rule_engine_passed=True,
+                    provenance=prov,
+                ))
             except Exception:
                 pass
 
@@ -227,7 +241,12 @@ class CADShield(PipelinePhase):
                         [tuple(p) for p in seg],
                         dxfattribs={"layer": layer},
                     )
-                    entities.append(self._entity_record(entity_id, "LWPOLYLINE", layer, seg))
+                    entities.append(self._entity_record(
+                        entity_id, "LWPOLYLINE", layer, seg,
+                        confidence=context.classification.mean_confidence if context.classification else 1.0,
+                        rule_engine_passed=True,
+                        provenance=prov,
+                    ))
                 except Exception:
                     pass
 
@@ -239,7 +258,12 @@ class CADShield(PipelinePhase):
                 pts = [tuple(p) for p in poly]
                 pts.append(pts[0])  # close polygon
                 msp.add_lwpolyline(pts, close=True, dxfattribs={"layer": layer})
-                entities.append(self._entity_record(entity_id, "POLYGON", layer, poly))
+                entities.append(self._entity_record(
+                    entity_id, "POLYGON", layer, poly,
+                    confidence=context.classification.mean_confidence if context.classification else 1.0,
+                    rule_engine_passed=True,
+                    provenance=prov,
+                ))
             except Exception:
                 pass
 
@@ -252,7 +276,12 @@ class CADShield(PipelinePhase):
                     [tuple(p) for p in line],
                     dxfattribs={"layer": layer},
                 )
-                entities.append(self._entity_record(entity_id, "POLYLINE", layer, line))
+                entities.append(self._entity_record(
+                    entity_id, "POLYLINE", layer, line,
+                    confidence=context.classification.mean_confidence if context.classification else 1.0,
+                    rule_engine_passed=True,
+                    provenance=prov,
+                ))
             except Exception:
                 pass
 
@@ -265,7 +294,12 @@ class CADShield(PipelinePhase):
                     [tuple(p) for p in line],
                     dxfattribs={"layer": layer},
                 )
-                entities.append(self._entity_record(entity_id, "POLYLINE", layer, line))
+                entities.append(self._entity_record(
+                    entity_id, "POLYLINE", layer, line,
+                    confidence=context.classification.mean_confidence if context.classification else 1.0,
+                    rule_engine_passed=True,
+                    provenance=prov,
+                ))
             except Exception:
                 pass
 
@@ -277,7 +311,12 @@ class CADShield(PipelinePhase):
                 pts = [tuple(p) for p in poly]
                 pts.append(pts[0])
                 msp.add_lwpolyline(pts, close=True, dxfattribs={"layer": layer})
-                entities.append(self._entity_record(entity_id, "OCCLUSION_ZONE", layer, poly))
+                entities.append(self._entity_record(
+                    entity_id, "OCCLUSION_ZONE", layer, poly,
+                    confidence=1.0,
+                    rule_engine_passed=True,
+                    provenance=prov,
+                ))
             except Exception:
                 pass
 
@@ -290,13 +329,19 @@ class CADShield(PipelinePhase):
             "entities": entities,
         }
 
-    def _write_dxf_manual(self, extraction: ExtractionResult, path: Path) -> dict:
+    def _write_dxf_manual(self, extraction: ExtractionResult, path: Path, context: PipelineContext) -> dict:
         """Minimal DXF writer fallback when ezdxf is not available."""
         entities = []
         lines = [
             "0", "SECTION", "2", "HEADER", "0", "ENDSEC",
             "0", "SECTION", "2", "ENTITIES",
         ]
+
+        # Metadata provenance
+        prov = {
+            "input_hash": context.input_hash,
+            "crs": context.crs.epsg_code if context.crs else None,
+        }
 
         # Write breaklines as LINE entities
         layer = self.layer_map.get("breaklines", "TOTaLi-SURV-BRKLN-DRAFT")
@@ -310,7 +355,12 @@ class CADShield(PipelinePhase):
                     "10", str(p0[0]), "20", str(p0[1]), "30", str(p0[2]),
                     "11", str(p1[0]), "21", str(p1[1]), "31", str(p1[2]),
                 ])
-                entities.append(self._entity_record(entity_id, "LINE", layer, brk))
+                entities.append(self._entity_record(
+                    entity_id, "LINE", layer, brk,
+                    confidence=context.classification.mean_confidence if context.classification else 1.0,
+                    rule_engine_passed=True,
+                    provenance=prov,
+                ))
 
         lines.extend(["0", "ENDSEC", "0", "EOF"])
 
@@ -328,7 +378,8 @@ class CADShield(PipelinePhase):
         return uuid.uuid4().hex[:12]
 
     def _entity_record(
-        self, entity_id: str, entity_type: str, layer: str, geometry
+        self, entity_id: str, entity_type: str, layer: str, geometry,
+        confidence: float = 1.0, rule_engine_passed: bool = True, provenance: dict = None
     ) -> dict:
         """Create an entity record for the manifest / audit trail."""
         geo_bytes = geometry.tobytes() if isinstance(geometry, np.ndarray) else str(geometry).encode()
@@ -338,4 +389,7 @@ class CADShield(PipelinePhase):
             "layer": layer,
             "status": GeometryStatus.DRAFT.value,
             "source_hash": hashlib.sha256(geo_bytes).hexdigest()[:16],
+            "confidence": confidence,
+            "rule_engine_passed": rule_engine_passed,
+            "provenance": provenance or {},
         }
