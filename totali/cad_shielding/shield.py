@@ -10,7 +10,7 @@ import json
 import uuid
 import hashlib
 from pathlib import Path
-from typing import Optional
+from typing import Optional, Callable
 
 import numpy as np
 
@@ -172,6 +172,24 @@ class CADShield(PipelinePhase):
         except ImportError:
             return self._write_dxf_manual(extraction, path)
 
+    def _safe_add_entity(
+        self,
+        add_func: Callable[[], None],
+        layer: str,
+        entity_type: str,
+        geometry,
+        entities_list: list,
+    ) -> None:
+        """Helper to safely add entities to DXF, swallowing exceptions."""
+        entity_id = self._entity_id()
+        try:
+            add_func()
+            entities_list.append(
+                self._entity_record(entity_id, entity_type, layer, geometry)
+            )
+        except Exception:
+            pass
+
     def _write_dxf_ezdxf(self, extraction: ExtractionResult, path: Path) -> dict:
         """Write DXF using ezdxf library."""
         import ezdxf
@@ -189,97 +207,88 @@ class CADShield(PipelinePhase):
             layer = self.layer_map.get("ground_surface", "TOTaLi-SURV-DTM-DRAFT")
             for face in extraction.dtm_faces:
                 v = extraction.dtm_vertices[face]
-                entity_id = self._entity_id()
-                try:
+
+                def _add_3dface():
                     msp.add_3dface(
                         [tuple(v[0]), tuple(v[1]), tuple(v[2]), tuple(v[2])],
                         dxfattribs={"layer": layer},
                     )
-                    entities.append(self._entity_record(
-                        entity_id, "3DFACE", layer, v
-                    ))
-                except Exception:
-                    pass
+
+                self._safe_add_entity(_add_3dface, layer, "3DFACE", v, entities)
 
         # Breaklines as POLYLINE
         layer = self.layer_map.get("breaklines", "TOTaLi-SURV-BRKLN-DRAFT")
         for line in extraction.breaklines:
-            entity_id = self._entity_id()
-            try:
+            def _add_polyline():
                 msp.add_polyline3d(
                     [tuple(p) for p in line],
                     dxfattribs={"layer": layer},
                 )
-                entities.append(self._entity_record(entity_id, "POLYLINE", layer, line))
-            except Exception:
-                pass
+
+            self._safe_add_entity(_add_polyline, layer, "POLYLINE", line, entities)
 
         # Contours
         for contour_list, layer_key in [
             (extraction.contours_minor, "contours_minor"),
             (extraction.contours_index, "contours_index"),
         ]:
-            layer = self.layer_map.get(layer_key, f"TOTaLi-SURV-CONT-{layer_key.upper()}-DRAFT")
+            layer = self.layer_map.get(
+                layer_key, f"TOTaLi-SURV-CONT-{layer_key.upper()}-DRAFT"
+            )
             for seg in contour_list:
-                entity_id = self._entity_id()
-                try:
+                def _add_lwpolyline():
                     msp.add_lwpolyline(
                         [tuple(p) for p in seg],
                         dxfattribs={"layer": layer},
                     )
-                    entities.append(self._entity_record(entity_id, "LWPOLYLINE", layer, seg))
-                except Exception:
-                    pass
+
+                self._safe_add_entity(
+                    _add_lwpolyline, layer, "LWPOLYLINE", seg, entities
+                )
 
         # Building footprints
         layer = self.layer_map.get("buildings", "TOTaLi-PLAN-BLDG-DRAFT")
         for poly in extraction.building_footprints:
-            entity_id = self._entity_id()
-            try:
+            def _add_polygon():
                 pts = [tuple(p) for p in poly]
                 pts.append(pts[0])  # close polygon
                 msp.add_lwpolyline(pts, close=True, dxfattribs={"layer": layer})
-                entities.append(self._entity_record(entity_id, "POLYGON", layer, poly))
-            except Exception:
-                pass
+
+            self._safe_add_entity(_add_polygon, layer, "POLYGON", poly, entities)
 
         # Curbs
         layer = self.layer_map.get("curbs", "TOTaLi-PLAN-CURB-DRAFT")
         for line in extraction.curb_lines:
-            entity_id = self._entity_id()
-            try:
+            def _add_curb():
                 msp.add_polyline3d(
                     [tuple(p) for p in line],
                     dxfattribs={"layer": layer},
                 )
-                entities.append(self._entity_record(entity_id, "POLYLINE", layer, line))
-            except Exception:
-                pass
+
+            self._safe_add_entity(_add_curb, layer, "POLYLINE", line, entities)
 
         # Wire
         layer = self.layer_map.get("wire", "TOTaLi-PLAN-WIRE-DRAFT")
         for line in extraction.wire_lines:
-            entity_id = self._entity_id()
-            try:
+            def _add_wire():
                 msp.add_polyline3d(
                     [tuple(p) for p in line],
                     dxfattribs={"layer": layer},
                 )
-                entities.append(self._entity_record(entity_id, "POLYLINE", layer, line))
-            except Exception:
-                pass
+
+            self._safe_add_entity(_add_wire, layer, "POLYLINE", line, entities)
 
         # Occlusion zones
         layer = self.layer_map.get("occlusion_zones", "TOTaLi-QA-OCCLUSION")
         for poly in extraction.occlusion_zones:
-            entity_id = self._entity_id()
-            try:
+            def _add_occlusion():
                 pts = [tuple(p) for p in poly]
                 pts.append(pts[0])
                 msp.add_lwpolyline(pts, close=True, dxfattribs={"layer": layer})
-                entities.append(self._entity_record(entity_id, "OCCLUSION_ZONE", layer, poly))
-            except Exception:
-                pass
+
+            self._safe_add_entity(
+                _add_occlusion, layer, "OCCLUSION_ZONE", poly, entities
+            )
 
         doc.saveas(str(path))
 

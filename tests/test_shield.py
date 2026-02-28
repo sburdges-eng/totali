@@ -2,7 +2,7 @@
 
 import json
 from pathlib import Path
-from unittest.mock import patch
+from unittest.mock import patch, MagicMock
 
 import numpy as np
 import pytest
@@ -204,3 +204,54 @@ class TestPhaseRun:
         manifest = result.data["manifest"]
         for entity in manifest.get("entities", []):
             assert entity["status"] == "DRAFT"
+
+class TestEzdxfWriting:
+    def test_ezdxf_calls_made(self, shield, sample_extraction, tmp_path):
+        """Verify that _write_dxf_ezdxf interacts with ezdxf correctly."""
+        out_path = tmp_path / "test_ezdxf.dxf"
+
+        mock_doc = MagicMock()
+        mock_msp = MagicMock()
+        mock_doc.modelspace.return_value = mock_msp
+
+        mock_ezdxf = MagicMock()
+        mock_ezdxf.new.return_value = mock_doc
+
+        with patch.dict("sys.modules", {"ezdxf": mock_ezdxf}):
+            manifest = shield._write_dxf_ezdxf(sample_extraction, out_path)
+
+            assert manifest["format"] == "dxf"
+            assert mock_doc.saveas.called
+
+            # Verify call types
+            assert mock_msp.add_3dface.called
+            assert mock_msp.add_polyline3d.called
+            assert mock_msp.add_lwpolyline.called
+
+    def test_swallows_exceptions_via_safe_add(self, shield, sample_extraction, tmp_path):
+        """Verify exceptions are swallowed by the new helper."""
+        out_path = tmp_path / "test_ezdxf_error.dxf"
+
+        mock_doc = MagicMock()
+        mock_msp = MagicMock()
+        mock_doc.modelspace.return_value = mock_msp
+
+        # Make one method fail
+        mock_msp.add_3dface.side_effect = ValueError("Bad geometry")
+
+        mock_ezdxf = MagicMock()
+        mock_ezdxf.new.return_value = mock_doc
+
+        with patch.dict("sys.modules", {"ezdxf": mock_ezdxf}):
+            manifest = shield._write_dxf_ezdxf(sample_extraction, out_path)
+
+            # Should still return result
+            assert manifest["format"] == "dxf"
+
+            # 3DFACE entities should be missing from manifest
+            faces = [e for e in manifest["entities"] if e["type"] == "3DFACE"]
+            assert len(faces) == 0
+
+            # Other entities should be present
+            polylines = [e for e in manifest["entities"] if e["type"] == "POLYLINE"]
+            assert len(polylines) > 0
