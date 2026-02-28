@@ -8,6 +8,7 @@ All output goes to DRAFT layers only.
 
 import json
 import uuid
+import itertools
 import hashlib
 from pathlib import Path
 from typing import Optional
@@ -30,6 +31,9 @@ class CADShield(PipelinePhase):
         self.layer_map = config.get("layer_mapping", {})
         self.timeout = config.get("middleware_timeout_sec", 30)
         self.max_retry = config.get("max_retry", 3)
+
+        self._id_prefix = uuid.uuid4().hex[:6]
+        self._id_counter = itertools.count()
 
     def validate_inputs(self, context: PipelineContext) -> tuple[bool, list[str]]:
         errors: list[str] = []
@@ -59,7 +63,7 @@ class CADShield(PipelinePhase):
 
         # Write to DXF
         dxf_path = output_dir / "totali_draft_output.dxf"
-        entity_manifest = self._write_dxf(extraction, dxf_path)
+        entity_manifest = self._write_dxf(extraction, dxf_path, context)
 
         # Write entity manifest (chain of custody)
         manifest_path = output_dir / "entity_manifest.json"
@@ -164,15 +168,15 @@ class CADShield(PipelinePhase):
 
         return report
 
-    def _write_dxf(self, extraction: ExtractionResult, path: Path) -> dict:
+    def _write_dxf(self, extraction: ExtractionResult, path: Path, context: PipelineContext = None) -> dict:
         """Write extraction results to DXF with proper layer mapping."""
         try:
             import ezdxf
-            return self._write_dxf_ezdxf(extraction, path)
+            return self._write_dxf_ezdxf(extraction, path, context)
         except ImportError:
-            return self._write_dxf_manual(extraction, path)
+            return self._write_dxf_manual(extraction, path, context)
 
-    def _write_dxf_ezdxf(self, extraction: ExtractionResult, path: Path) -> dict:
+    def _write_dxf_ezdxf(self, extraction: ExtractionResult, path: Path, context: PipelineContext = None) -> dict:
         """Write DXF using ezdxf library."""
         import ezdxf
 
@@ -290,7 +294,7 @@ class CADShield(PipelinePhase):
             "entities": entities,
         }
 
-    def _write_dxf_manual(self, extraction: ExtractionResult, path: Path) -> dict:
+    def _write_dxf_manual(self, extraction: ExtractionResult, path: Path, context: PipelineContext = None) -> dict:
         """Minimal DXF writer fallback when ezdxf is not available."""
         entities = []
         lines = [
@@ -325,10 +329,12 @@ class CADShield(PipelinePhase):
         }
 
     def _entity_id(self) -> str:
-        return uuid.uuid4().hex[:12]
+        return f"{self._id_prefix}{next(self._id_counter):06x}"
 
     def _entity_record(
-        self, entity_id: str, entity_type: str, layer: str, geometry
+        self, entity_id: str, entity_type: str, layer: str, geometry,
+        confidence: float = 1.0, rule_engine_passed: bool = True,
+        provenance: dict = None
     ) -> dict:
         """Create an entity record for the manifest / audit trail."""
         geo_bytes = geometry.tobytes() if isinstance(geometry, np.ndarray) else str(geometry).encode()
@@ -338,4 +344,7 @@ class CADShield(PipelinePhase):
             "layer": layer,
             "status": GeometryStatus.DRAFT.value,
             "source_hash": hashlib.sha256(geo_bytes).hexdigest()[:16],
+            "confidence": confidence,
+            "rule_engine_passed": rule_engine_passed,
+            "provenance": provenance or {},
         }
