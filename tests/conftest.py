@@ -65,12 +65,15 @@ class _FakeLasHeader:
         self.version = version
         self.offsets = np.array([0.0, 0.0, 0.0])
         self.scales = [0.001, 0.001, 0.001]
+        self.point_count = 100
+        self.vlrs = []
 
 
 class _FakeLasData:
     """Minimal laspy.LasData stand-in backed by numpy arrays."""
     def __init__(self, header=None, n_points=100):
         self.header = header or _FakeLasHeader()
+        self.header.point_count = n_points
         rng = np.random.default_rng(42)
         self._n = n_points
         self._x = rng.uniform(0, 1000, n_points)
@@ -101,6 +104,18 @@ class _FakeLasData:
         pass
 
 
+class _FakeLasReader:
+    def __init__(self, path):
+        self.path = path
+        self.header = _FakeLasHeader()
+    def __enter__(self):
+        return self
+    def __exit__(self, exc_type, exc_val, exc_tb):
+        pass
+    def read(self):
+        return _FakeLasData(header=self.header)
+
+
 class _FakeLaspyModule:
     LasData = _FakeLasData
     LasHeader = _FakeLasHeader
@@ -108,6 +123,10 @@ class _FakeLaspyModule:
     @staticmethod
     def read(path):
         return _FakeLasData()
+
+    @staticmethod
+    def open(path, mode="r", header=None):
+        return _FakeLasReader(path)
 
 
 # Stub pyproj
@@ -160,9 +179,11 @@ def sample_config():
         "geodetic": {
             "allowed_crs": ["EPSG:2231"],
             "reject_on_missing_crs": True,
-            "reject_on_mixed_datum": True,
+            "reject_on_mixed_datum: True": True,
             "geoid_model": "GEOID18",
             "elevation_unit": "US_survey_foot",
+            "max_file_size_mb": 500,
+            "max_point_count": 10000000,
         },
         "segmentation": {
             "model_path": "models/nonexistent.onnx",
