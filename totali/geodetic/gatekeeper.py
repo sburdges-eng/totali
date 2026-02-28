@@ -7,6 +7,7 @@ Rejects ambiguous inputs. Applies PROJ-based transformations.
 
 import hashlib
 import json
+import os
 from pathlib import Path
 from typing import Optional
 
@@ -34,22 +35,55 @@ class GeodeticGatekeeper(PipelinePhase):
         self.reject_missing_crs = config.get("reject_on_missing_crs", True)
         self.geoid_model = config.get("geoid_model", "GEOID18")
 
+        # Security limits
+        self.max_file_size_mb = config.get("max_file_size_mb", 500)
+        self.max_point_count = config.get("max_point_count", 10_000_000)
+
     def validate_inputs(self, context: PipelineContext) -> tuple[bool, list[str]]:
         errors: list[str] = []
         if not context.input_path:
             errors.append("input_path is required")
-        elif not Path(context.input_path).exists():
+            return False, errors
+
+        path = Path(context.input_path)
+        if not path.exists():
             errors.append(f"Input path does not exist: {context.input_path}")
+            return False, errors
+
+        # Physical file size check (DoS prevention)
+        file_size_mb = os.path.getsize(path) / (1024 * 1024)
+        if file_size_mb > self.max_file_size_mb:
+            errors.append(
+                f"File size ({file_size_mb:.1f} MB) exceeds limit of {self.max_file_size_mb} MB"
+            )
+
         if self.allowed_epsg and self.allowed_epsg[0] is None:
             errors.append("allowed_crs contains non-EPSG CRS; expected EPSG-backed entries")
+
         return len(errors) == 0, errors
 
     def run(self, context: PipelineContext) -> PhaseResult:
         input_path = Path(context.input_path)
         output_dir = Path(context.output_dir)
 
-        # Read point cloud
-        las = laspy.read(str(input_path))
+        # Inspect header before full read (DoS prevention)
+        try:
+            with laspy.open(str(input_path)) as reader:
+                point_count = reader.header.point_count
+                if point_count > self.max_point_count:
+                    return PhaseResult(
+                        phase="geodetic",
+                        success=False,
+                        message=f"Point count ({point_count}) exceeds limit of {self.max_point_count}",
+                    )
+                # Load the full point cloud now that we've validated the size
+                las = reader.read()
+        except Exception as e:
+            return PhaseResult(
+                phase="geodetic",
+                success=False,
+                message=f"Failed to read LAS header: {e}",
+            )
 
         # Extract and validate CRS
         crs_meta = self._extract_crs(las, input_path)

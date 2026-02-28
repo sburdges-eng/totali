@@ -20,6 +20,8 @@ geodetic:
   reject_on_mixed_datum: true
   reject_on_missing_crs: true
   elevation_unit: "US_survey_foot"
+  max_file_size_mb: 500
+  max_point_count: 10000000
 
 # Phase 2: ML Segmentation
 segmentation:
