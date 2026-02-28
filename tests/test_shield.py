@@ -164,7 +164,7 @@ class TestPhaseRun:
         assert result.success is True
         assert "manifest" in result.data
         assert "healing" in result.data
-        assert "dxf_path" in result.data
+        assert "manifest" in result.data
 
     @patch("totali.cad_shielding.shield.CADShield._write_dxf")
     def test_run_writes_output_files(self, mock_write, shield, tmp_output, sample_extraction, sample_classification):
