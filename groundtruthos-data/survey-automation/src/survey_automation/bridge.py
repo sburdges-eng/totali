@@ -47,7 +47,7 @@ class IntentBridge:
                     category=row.get("category", ""),
                     ls_number=row.get("ls_number", ""),
                     source_file=row.get("source_file", ""),
-                    source_line=int(row.get("source_line", 0))
+                    source_line=int(row.get("source_line") or 0)
                 ))
 
     def derive_intent(self, rules: List[Any]):
@@ -118,13 +118,6 @@ class IntentBridge:
     def export(self, output_dir: Path):
         output_dir.mkdir(parents=True, exist_ok=True)
 
-        # Helper to dump dataclasses to JSON
-        def to_dict(obj):
-            if hasattr(obj, "__dict__") or hasattr(obj, "__slots__"):
-                return asdict(obj)
-            if isinstance(obj, list):
-                return [to_dict(i) for i in obj]
-            return obj
 
         if self.intent_artifact:
             with open(output_dir / "intent_ir.json", "w") as f:
