@@ -329,7 +329,7 @@ class CADShield(PipelinePhase):
 
     def _entity_record(
         self, entity_id: str, entity_type: str, layer: str, geometry,
-        confidence: float = 0.0, rule_engine_passed: bool = True, provenance: dict = None
+        confidence: float = 0.0, rule_engine_passed: bool = True, provenance: Optional[dict] = None
     ) -> dict:
         """Create an entity record for the manifest / audit trail."""
         geo_bytes = geometry.tobytes() if isinstance(geometry, np.ndarray) else str(geometry).encode()
