@@ -29,6 +29,8 @@ class IntentBridge:
         if not self.points_path.exists():
             raise FileNotFoundError(f"Source points not found: {self.points_path}")
 
+        self.points.clear()
+
         # Simple CSV loading for now (assuming standard format)
         import csv
         with open(self.points_path, "r", encoding="utf-8") as f:
