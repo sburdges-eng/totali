@@ -10,11 +10,6 @@ from pathlib import Path
 
 from totali.pipeline.models import PipelineResult, PhaseResult
 from totali.pipeline.context import PipelineConfig, PipelineContext
-from totali.geodetic.gatekeeper import GeodeticGatekeeper
-from totali.segmentation.classifier import PointCloudClassifier
-from totali.extraction.extractor import DeterministicExtractor
-from totali.cad_shielding.shield import CADShield
-from totali.linting.surveyor_lint import SurveyorLinter
 from totali.audit.logger import AuditLogger
 
 
@@ -28,6 +23,12 @@ class PipelineOrchestrator:
         self.output_dir = output_dir
 
         # Initialize phase processors
+        from totali.geodetic.gatekeeper import GeodeticGatekeeper
+        from totali.segmentation.classifier import PointCloudClassifier
+        from totali.extraction.extractor import DeterministicExtractor
+        from totali.cad_shielding.shield import CADShield
+        from totali.linting.surveyor_lint import SurveyorLinter
+
         self.phases = {
             "geodetic": GeodeticGatekeeper(self.config.geodetic, audit),
             "segment": PointCloudClassifier(self.config.segmentation, audit),
@@ -38,85 +39,54 @@ class PipelineOrchestrator:
 
     def run(self, input_path: str, phase: str = "all") -> PipelineResult:
         t0 = time.time()
-        result = PipelineResult(
-            project_id=self.config.project.name
-        )
-
-        phases_to_run = PHASE_ORDER if phase == "all" else [phase]
-        context = PipelineContext(
+        ctx = PipelineContext(
             input_path=input_path,
             output_dir=self.output_dir,
+            input_hash="hash_placeholder"  # compute if needed
         )
 
-        for phase_name in phases_to_run:
-            processor = self.phases[phase_name]
-            self.audit.log(f"phase_start", {"phase": phase_name})
+        results = []
+        phases_to_run = PHASE_ORDER if phase == "all" else [phase]
 
-            pt0 = time.time()
-            try:
-                valid, errors = processor.validate_inputs(context)
-                if not valid:
-                    phase_result = PhaseResult(
-                        phase=phase_name,
-                        success=False,
-                        duration_sec=time.time() - pt0,
-                        message=f"Input validation failed: {errors}",
-                    )
-                    result.phases.append(phase_result)
-                    result.success = False
-                    context.phase_status[phase_name] = "failed_validation"
-                    context.errors.extend(errors)
-                    self.audit.log("phase_failed", {
-                        "phase": phase_name,
-                        "message": phase_result.message,
-                    })
-                    break
+        for p_name in phases_to_run:
+            if p_name not in self.phases:
+                continue
 
-                phase_result = processor.run(context)
-                phase_result.duration_sec = time.time() - pt0
+            # Log phase start
+            self.audit.log("phase_start", {"phase": p_name})
 
-                if not phase_result.success:
-                    self.audit.log("phase_failed", {
-                        "phase": phase_name,
-                        "message": phase_result.message,
-                    })
-                    result.success = False
-                    result.phases.append(phase_result)
-                    context.phase_status[phase_name] = "failed"
-                    context.errors.append(phase_result.message)
-                    break
+            # Run phase
+            res = self.phases[p_name].run(ctx)
+            results.append(res)
 
-                # Pass outputs forward as context for next phase
-                context.merge_data(phase_result.data)
-                context.last_output_files = phase_result.output_files
-                context.phase_status[phase_name] = "success"
-                result.phases.append(phase_result)
-                result.output_files.extend(phase_result.output_files)
+            # Log phase completion
+            self.audit.log("phase_complete", {
+                "phase": p_name,
+                "success": res.success,
+                "duration": res.duration_sec
+            })
 
-                self.audit.log("phase_complete", {
-                    "phase": phase_name,
-                    "duration_sec": phase_result.duration_sec,
-                    "outputs": [str(f) for f in phase_result.output_files],
-                })
+            if not res.success:
+                break
 
-            except Exception as e:
-                phase_result = PhaseResult(
-                    phase=phase_name, success=False,
-                    duration_sec=time.time() - pt0,
-                    message=f"Exception: {e}",
-                )
-                result.phases.append(phase_result)
-                result.success = False
-                context.phase_status[phase_name] = "exception"
-                context.errors.append(str(e))
-                self.audit.log("phase_exception", {
-                    "phase": phase_name, "error": str(e),
-                })
-                raise
+            # Merge context
+            if "extraction" in res.data:
+                ctx.merge_data(res.data["extraction"])
+            if "classification" in res.data:
+                ctx.classification = res.data["classification"]
+            if "points_xyz" in res.data:
+                ctx.points_xyz = res.data["points_xyz"]
+            if "crs" in res.data:
+                ctx.crs = res.data["crs"]
+            if "stats" in res.data:
+                ctx.stats = res.data["stats"]
 
-        result.stats = context.stats
-        result.classification = context.classification
-        result.extraction = context.extraction
-        result.healing = context.healing
-        result.duration_sec = time.time() - t0
-        return result
+        duration = time.time() - t0
+        success = all(r.success for r in results)
+
+        return PipelineResult(
+            project_id=self.config.project.name,
+            success=success,
+            phases=results,
+            duration_sec=duration
+        )
