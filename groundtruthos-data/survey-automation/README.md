@@ -40,6 +40,7 @@ You can override with environment variables:
 | `survey-automation profile --input-dir <dir> --output <json> --quiet` | Profile files and write only to output file | Suppresses stdout JSON |
 | `survey-automation profile --input-dir <dir> --output <json> --config <yaml>` | Profile files using configured include/exclude globs | Uses config discovery scope |
 | `survey-automation run --input-dir <dir> --config <yaml> --output-dir <dir> [--run-id <id>]` | Run full normalization/QC pipeline | Writes artifacts to `artifacts/<run-id>/` |
+| `survey-automation doctor [--config <yaml>] [--input-dir <dir>] [--output-dir <dir>] [--sample-crd <path>]` | Validate environment, config, converter, and data-path readiness | Returns actionable fixes and exits `3` when checks fail |
 
 If you prefer module execution during development:
 
@@ -67,13 +68,46 @@ Run output root: `artifacts/<run-id>/`
 - QC reports:
   - `artifacts/<run-id>/reports/qc_findings.jsonl`
   - `artifacts/<run-id>/reports/qc_summary.json`
+  - `artifacts/<run-id>/reports/qc_trend.json`
 - Quarantine:
   - `artifacts/<run-id>/quarantine/quarantined_rows.csv`
   - `artifacts/<run-id>/quarantine/quarantined_files.json`
 - Manifest:
   - `artifacts/<run-id>/manifest/run_manifest.json`
+  - `artifacts/<run-id>/manifest/dataset_snapshot.json`
 
-`run_manifest.json` includes `tool_version`, `warning_threshold`, and `warning_threshold_exceeded`.
+`run_manifest.json` includes `tool_version`, `qc_profile`, warning-threshold fields, trend status, and dataset snapshot metadata.
+`run_manifest.json` and `qc_summary.json` also include `phase_presentation` for `ground_truth -> phase_1 -> phase_2 -> phase_3`.
+
+## Phase presentation model
+
+`phase_presentation` is metadata-only and does not change exit-code behavior.
+
+Status rules:
+
+- `phase_1` (input/config readiness): `pass` when `files_total > 0`, else `fail`
+- `phase_2` (normalization/conversion execution):
+  - `pass` when `files_processed > 0` and `files_quarantined == 0`
+  - `warning` when `files_processed > 0` and `files_quarantined > 0`
+  - `fail` when `files_processed == 0`
+- `phase_3` (QC/report completion): `pass` for exit `0`, `warning` for exit `2`, `fail` for exit `3`
+
+Default color legend (color-blind-safe):
+
+- Category colors:
+  - `config`: `#0072B2`
+  - `data`: `#009E73`
+  - `environment`: `#D55E00`
+  - `converter`: `#CC79A7`
+- Config colors:
+  - `qc_profile.strict`: `#0072B2`
+  - `qc_profile.standard`: `#56B4E9`
+  - `qc_profile.legacy`: `#E69F00`
+  - `crd_mode.auto`: `#009E73`
+  - `crd_mode.converter_required`: `#D55E00`
+  - `crd_mode.text_only`: `#999999`
+
+Override palette/config mapping in `presentation` in your YAML config (`config/pipeline.example.yaml`).
 
 ## Config templates and examples
 
@@ -106,6 +140,14 @@ Production warning-noise controls are configurable under `validation`:
 
 - `duplicate_point_id_mode`: `all_occurrences` | `per_point_id` | `within_file`
 - `unmapped_description_skip_categories`: category names to skip for unmapped description-code checks (for example `Converted`)
+- `trend_tracking`: warning/error/critical delta gates vs the last good run baseline
+- `project.baseline_namespace`: isolates trend baseline state per project to prevent cross-project contamination
+
+Project-level defaults are selectable with `project.qc_profile`:
+
+- `strict`: conservative defaults and minimal remediation
+- `standard`: production-oriented excludes and remediation defaults
+- `legacy`: higher tolerance for legacy feeds
 
 The `scripts/converter` tool parses Carlson `New CRD Format2` binary records and text CRD rows into point-style CSV.
 Production config discovery includes supported survey extensions under `TOTaLi/` and `.local-datasets/TOTaLi/` and deduplicates files that resolve to the same real path.
@@ -134,6 +176,12 @@ Optional smoke test with a known binary CRD sample:
 
 ```bash
 survey-automation check-converter --config config/pipeline.prod.yaml --sample-crd /abs/path/to/sample.crd
+```
+
+Optional full environment diagnosis:
+
+```bash
+survey-automation doctor --config config/pipeline.prod.yaml --input-dir . --output-dir artifacts
 ```
 
 4. Run deterministic production batch:
@@ -167,6 +215,16 @@ scripts/v2_release_candidate_gate.sh
 git tag v2.0.0
 git push origin v2.0.0
 ```
+
+## Continuous evaluation gate (training runs)
+
+For JEPA/training decisions, use the failure-bucket gate script before scaling data volume:
+
+```bash
+python scripts/eval_gate.py --metrics /abs/path/to/metrics.json --baseline /abs/path/to/baseline.json --thresholds config/eval_gate.example.yaml
+```
+
+The gate enforces held-out quality, stability drift, cost/latency limits, and hard-negative curation share.
 
 ## Hosted CI behavior
 

@@ -7,7 +7,8 @@
 3. Ensure either `TOTaLi/` is available or `.local-datasets/TOTaLi/` mirror exists.
 4. Run `survey-automation check-converter --config config/pipeline.prod.yaml`.
 5. Run pipeline with deterministic `--run-id` when repeatability is needed.
-6. Review `reports/qc_summary.json`, then inspect quarantine artifacts.
+6. Run `survey-automation doctor --config config/pipeline.prod.yaml --input-dir . --output-dir artifacts` when diagnosing environment/config drift.
+7. Review `reports/qc_summary.json`, `reports/qc_trend.json`, and `manifest/dataset_snapshot.json`, then inspect quarantine artifacts.
 
 Example:
 
@@ -16,6 +17,40 @@ export CRD_CONVERTER_COMMAND="$(pwd)/scripts/converter --input {input} --output 
 ```
 
 `crd.converter_command` environment references are resolved at command execution time (`check-converter` / `run`).
+
+## Phase presentation metadata
+
+Run artifacts include `phase_presentation` in:
+
+1. `reports/qc_summary.json`
+2. `manifest/run_manifest.json`
+
+Interpretation:
+
+1. `ground_truth`: snapshot/config context (`snapshot_id`, `qc_profile`, `crd_mode`).
+2. `phase_1`: input/config readiness (`files_total`, config validity evidence).
+3. `phase_2`: normalization/conversion execution (`files_processed`, `files_quarantined`).
+4. `phase_3`: QC/report completion (`exit_code`, `findings_by_severity`).
+
+Status rules:
+
+1. `phase_1` is `pass` when `files_total > 0`, else `fail`.
+2. `phase_2` is `pass` when processed files exist and quarantine is zero; `warning` when processed files exist with quarantine; `fail` when no files processed.
+3. `phase_3` maps to exit code: `0 -> pass`, `2 -> warning`, `3 -> fail`.
+
+This metadata is presentation-only and does not modify run exit semantics.
+
+## Doctor category colors
+
+`survey-automation doctor` emits per-check `color` values and top-level `presentation` palette metadata.
+Default category colors:
+
+1. `config`: `#0072B2`
+2. `data`: `#009E73`
+3. `environment`: `#D55E00`
+4. `converter`: `#CC79A7`
+
+These can be overridden via the config `presentation` block.
 
 ## Hosted CI validation (GitHub-hosted runner)
 
@@ -59,6 +94,7 @@ What it adds on top of PT II baseline:
 1. Documentation path reference enforcement (`tests/unit/test_docs_paths.py`).
 2. Production config validation (`survey-automation validate --config config/pipeline.prod.yaml`).
 3. Production converter readiness check (`survey-automation check-converter --config config/pipeline.prod.yaml`).
+4. Production QC trend and dataset snapshot artifacts for reproducibility/regression detection.
 
 Checklist and evidence requirements:
 
@@ -97,14 +133,25 @@ Keep large datasets on external storage and mirror locally as needed:
 
 Use production config controls to suppress non-actionable warning volume:
 
-1. `validation.duplicate_point_id_mode`:
+1. `project.qc_profile`:
+- `strict`: conservative defaults and no automatic remediation.
+- `standard`: production defaults with known noisy exclusions and remediation enabled.
+- `legacy`: compatibility-biased defaults for noisier historical datasets.
+2. `project.baseline_namespace`:
+- Use a unique namespace per project so trend baselines do not bleed across unrelated runs.
+3. `validation.duplicate_point_id_mode`:
 - `all_occurrences`: one finding per duplicate row.
 - `per_point_id`: one finding per duplicate point id across all files.
 - `within_file`: one finding per duplicate point id within each source file.
-2. `validation.unmapped_description_skip_categories`:
+4. `validation.unmapped_description_skip_categories`:
 - Skip unmapped description-code findings for configured point categories (for example `Converted` from CRD conversion outputs).
-3. `input.include_globs`:
+5. `input.include_globs`:
 - Restrict to supported extensions (`.csv`, `.dxf`, `.crd`, `.txt`, `.pts`, `.asc`) to avoid unsupported-extension quarantine noise.
+6. `validation.trend_tracking`:
+- Compare warning/error/critical deltas against the last good run baseline.
+- Fail with `qc_regression_spike` when configured spike thresholds are exceeded.
+7. `remediation`:
+- Optional auto-remediation for blank field codes, duplicate tail blocks, and malformed footer rows.
 
 ## Binary CRD handling
 
@@ -124,13 +171,15 @@ Use production config controls to suppress non-actionable warning volume:
 
 Trigger:
 - Warning threshold exceeded in `run_manifest.json`.
+- Trend spike detected in `reports/qc_trend.json`.
 - Quarantine growth but no fatal pipeline failure.
 
 Action:
 1. Open `reports/qc_summary.json` and `quarantine/*`.
-2. Identify top warning codes and impacted files.
-3. Create an issue with run id, warning counts, and top reason codes.
-4. Re-run after source/config corrections.
+2. Check `reports/qc_trend.json` deltas vs baseline run.
+3. Identify top warning codes and impacted files.
+4. Create an issue with run id, warning counts, trend deltas, and top reason codes.
+5. Re-run after source/config corrections.
 
 ### Level 2: converter degradation
 

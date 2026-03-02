@@ -8,6 +8,10 @@ jobs:
     runs-on: ubuntu-latest
     env:
       CRD_CONVERTER_COMMAND: "${{ github.workspace }}/scripts/converter --input {input} --output {output}"
+      EVAL_GATE_METRICS_PATH: "validation/eval/current_metrics.json"
+      EVAL_GATE_BASELINE_PATH: "validation/eval/baseline_metrics.json"
+      EVAL_GATE_THRESHOLDS_PATH: "config/eval_gate.example.yaml"
+      EVAL_GATE_REPORT_PATH: "artifacts/eval_gate_report.json"
     steps:
       - name: Checkout
         uses: actions/checkout@v4

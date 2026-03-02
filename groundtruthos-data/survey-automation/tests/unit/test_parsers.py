@@ -81,3 +81,46 @@ def test_parse_csv_uses_configured_column_counts(tmp_path: Path) -> None:
     assert len(result.points) == 1
     assert len(result.field_code_rules) == 1
     assert len(result.quarantined_rows) == 0
+
+
+def test_parse_csv_auto_remediates_blank_field_code(tmp_path: Path) -> None:
+    config = deepcopy(DEFAULT_CONFIG)
+    config["remediation"]["enabled"] = True
+    config["remediation"]["fix_blank_field_codes"] = True
+    path = tmp_path / "field_codes.csv"
+    path.write_text(
+        "Field Code,Layer,Symbol,Linework\n"
+        ",PNTS,DOT1,YES\n",
+        encoding="utf-8",
+    )
+
+    result = parse_csv_file(path, "field_code_csv", config, "run-test")
+    assert len(result.field_code_rules) == 1
+    assert result.field_code_rules[0].field_code.startswith("AUTO_PNTS_")
+    assert len(result.quarantined_rows) == 0
+    assert any(finding.code == "auto_remediated_blank_field_code" for finding in result.findings)
+
+
+def test_parse_csv_auto_remediates_duplicate_tail_and_footer(tmp_path: Path) -> None:
+    config = deepcopy(DEFAULT_CONFIG)
+    config["remediation"]["enabled"] = True
+    config["remediation"]["drop_duplicate_tail_blocks"] = True
+    config["remediation"]["drop_malformed_footer_rows"] = True
+    mixed = tmp_path / "mixed.csv"
+    mixed.write_text(
+        "Field Code,Layer,Symbol,Linework\n"
+        "CP,PNTS,DOT1,YES\n"
+        "Point#,Northing,Easting,Elevation,Description,DWG Description,DWG Layer,Locked,Group,Category,LS Number\n"
+        "1,100,200,300,CP START,CP START,PNTS,No,,Other,\n"
+        "Point#,Northing,Easting,Elevation,Description,DWG Description,DWG Layer,Locked,Group,Category,LS Number\n"
+        "1,100,200,300,CP START,CP START,PNTS,No,,Other,\n"
+        "END OF EXPORT\n",
+        encoding="utf-8",
+    )
+
+    result = parse_csv_file(mixed, "mixed_csv", config, "run-test")
+    assert len(result.points) == 1
+    assert len(result.field_code_rules) == 1
+    assert len(result.quarantined_rows) == 0
+    assert any(finding.code == "auto_remediated_duplicate_tail_block" for finding in result.findings)
+    assert any(finding.code == "auto_remediated_malformed_footer_row" for finding in result.findings)

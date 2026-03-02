@@ -1,5 +1,9 @@
 version: "1"
 
+project:
+  qc_profile: "strict"
+  baseline_namespace: "samples-ci"
+
 input:
   include_globs:
     - "samples/input/**/*"
@@ -46,6 +50,7 @@ validation:
 crd:
   mode: "converter_required"
   converter_command: "${CRD_CONVERTER_COMMAND}"
+  converter_failure_mode: "quarantine"
 
 outputs:
   formats:
