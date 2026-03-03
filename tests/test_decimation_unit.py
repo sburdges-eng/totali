@@ -1,13 +1,10 @@
 import sys
-from unittest.mock import MagicMock
+from pathlib import Path
 
-# Mock dependencies before importing the module under test
-sys.modules["laspy"] = MagicMock()
-# Mock numpy more carefully to avoid breaking pytest.approx
-mock_np = MagicMock()
-mock_np.bool_ = bool
-sys.modules["numpy"] = mock_np
-sys.modules["psycopg2"] = MagicMock()
+# Add groundtruthos-data to path so `pipeline.decimation` is importable.
+_groundtruthos_data_path = str(Path(__file__).parent.parent / "groundtruthos-data")
+if _groundtruthos_data_path not in sys.path:
+    sys.path.insert(0, _groundtruthos_data_path)
 
 import pytest
 from pipeline.decimation import (

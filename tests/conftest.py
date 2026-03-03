@@ -132,6 +132,9 @@ _ensure_stub("ezdxf")
 # Stub onnxruntime (optional ML dep)
 _ensure_stub("onnxruntime")
 
+# Stub psycopg2 (optional DB dep used by groundtruthos-data/pipeline/decimation.py)
+_ensure_stub("psycopg2")
+
 
 # ---------------------------------------------------------------------------
 # Fixtures
