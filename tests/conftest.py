@@ -10,6 +10,12 @@ from unittest.mock import MagicMock
 import numpy as np
 import pytest
 
+# Allow tests to import modules from the groundtruthos-data sub-project
+# (e.g. `from pipeline.decimation import ...`).
+_groundtruthos_data_path = Path(__file__).parent.parent / "groundtruthos-data"
+if str(_groundtruthos_data_path) not in sys.path:
+    sys.path.insert(0, str(_groundtruthos_data_path))
+
 # ---------------------------------------------------------------------------
 # Stub out heavy optional dependencies that may not be installed in the test
 # environment (laspy, pyproj, ezdxf, onnxruntime).  We create lightweight
@@ -131,6 +137,9 @@ _ensure_stub("ezdxf")
 
 # Stub onnxruntime (optional ML dep)
 _ensure_stub("onnxruntime")
+
+# Stub psycopg2 (optional DB dep used by groundtruthos-data pipeline)
+_ensure_stub("psycopg2")
 
 
 # ---------------------------------------------------------------------------

@@ -1,14 +1,3 @@
-import sys
-from unittest.mock import MagicMock
-
-# Mock dependencies before importing the module under test
-sys.modules["laspy"] = MagicMock()
-# Mock numpy more carefully to avoid breaking pytest.approx
-mock_np = MagicMock()
-mock_np.bool_ = bool
-sys.modules["numpy"] = mock_np
-sys.modules["psycopg2"] = MagicMock()
-
 import pytest
 from pipeline.decimation import (
     compute_adaptive_voxel_size,
