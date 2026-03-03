@@ -67,6 +67,42 @@ class TestCRSExtraction:
         assert meta.is_valid is False
         assert any("not in allowed" in e for e in meta.validation_errors)
 
+    def test_invalid_crs_wkt_adds_error(self, gatekeeper):
+        import laspy
+        from pyproj.exceptions import CRSError
+        las = laspy.read("fake")
+
+        fake_vlr = MagicMock()
+        fake_vlr.record_id = 2112
+        fake_vlr.record_data = b"INVALID WKT"
+        las.vlrs = [fake_vlr]
+
+        with patch("totali.geodetic.gatekeeper.CRS") as mock_crs_cls:
+            mock_crs_cls.from_wkt.side_effect = CRSError("Mocked invalid WKT error")
+            meta = gatekeeper._extract_crs(las, Path("test.las"))
+
+        assert meta.is_valid is False
+        assert any("Invalid CRS WKT" in e for e in meta.validation_errors)
+        assert any("Mocked invalid WKT error" in e for e in meta.validation_errors)
+
+    def test_crs_found_but_no_epsg_adds_error(self, gatekeeper):
+        import laspy
+        las = laspy.read("fake")
+
+        fake_vlr = MagicMock()
+        fake_vlr.record_id = 2112
+        fake_vlr.record_data = b"LOCAL_CS[\"Non-EPSG CRS\"]"
+        las.vlrs = [fake_vlr]
+
+        with patch("totali.geodetic.gatekeeper.CRS") as mock_crs_cls:
+            mock_crs = MagicMock()
+            mock_crs.to_epsg.return_value = None
+            mock_crs_cls.from_wkt.return_value = mock_crs
+            meta = gatekeeper._extract_crs(las, Path("test.las"))
+
+        assert meta.is_valid is False
+        assert any("no EPSG code resolvable" in e for e in meta.validation_errors)
+
 
 class TestComputeStats:
     def test_stats_from_las(self, gatekeeper):
