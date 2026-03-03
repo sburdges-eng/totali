@@ -171,31 +171,24 @@ class DeterministicExtractor(PipelinePhase):
         tri = Delaunay(pts[:, :2])
 
         # Filter triangles by max edge length
-        valid_faces = []
-        for simplex in tri.simplices:
-            verts = pts[simplex]
-            edges = [
-                np.linalg.norm(verts[0] - verts[1]),
-                np.linalg.norm(verts[1] - verts[2]),
-                np.linalg.norm(verts[2] - verts[0]),
-            ]
-            if max(edges) <= max_edge:
-                valid_faces.append(simplex)
+        # Vectorized filtering and metrics calculation
+        simplices = tri.simplices
+        v0 = pts[simplices[:, 0]]
+        v1 = pts[simplices[:, 1]]
+        v2 = pts[simplices[:, 2]]
 
-        faces = np.array(valid_faces) if valid_faces else np.empty((0, 3), dtype=int)
+        e01 = np.linalg.norm(v0 - v1, axis=1)
+        e12 = np.linalg.norm(v1 - v2, axis=1)
+        e20 = np.linalg.norm(v2 - v0, axis=1)
 
-        # Error metrics
+        max_edges = np.maximum(np.maximum(e01, e12), e20)
+        valid_mask = max_edges <= max_edge
+
+        faces = simplices[valid_mask]
+
         if len(faces) > 0:
-            # Compute face areas and edge stats
-            all_edges = []
-            for f in faces:
-                v = pts[f]
-                all_edges.extend([
-                    np.linalg.norm(v[0] - v[1]),
-                    np.linalg.norm(v[1] - v[2]),
-                    np.linalg.norm(v[2] - v[0]),
-                ])
-            all_edges = np.array(all_edges)
+            # Combine all edge lengths for valid faces
+            all_edges = np.stack([e01[valid_mask], e12[valid_mask], e20[valid_mask]], axis=1).flatten()
             metrics = {
                 "vertex_count": len(pts),
                 "face_count": len(faces),
