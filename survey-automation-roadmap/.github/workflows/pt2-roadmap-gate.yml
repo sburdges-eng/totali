@@ -2,8 +2,8 @@ name: PT2 Roadmap Gate
 
 on:
   workflow_dispatch:
-  schedule:
-    - cron: "0 16 * * 1"
+  # schedule:
+  #   - cron: "0 16 * * 1"
 
 jobs:
   pt2-gate:
