@@ -417,7 +417,7 @@ class DeterministicExtractor(PipelinePhase):
         return zones
 
     def _cluster_points_2d(self, pts: np.ndarray, radius: float) -> list:
-        """Simple grid-based clustering."""
+        """Simple grid-based clustering optimized with vectorization."""
         if len(pts) == 0:
             return []
 
@@ -425,16 +425,19 @@ class DeterministicExtractor(PipelinePhase):
         grid_size = radius * 2
         grid_keys = np.floor(xy / grid_size).astype(int)
 
-        clusters_dict = {}
-        for i, key in enumerate(grid_keys):
-            k = tuple(key)
-            clusters_dict.setdefault(k, []).append(i)
+        # Vectorized grouping using lexsort
+        sort_idx = np.lexsort((grid_keys[:, 1], grid_keys[:, 0]))
+        sorted_keys = grid_keys[sort_idx]
 
-        # Merge adjacent grid cells
-        clusters = []
-        for indices in clusters_dict.values():
-            if len(indices) >= 2:
-                clusters.append(pts[indices])
+        # Find indices where keys change
+        diff = np.any(sorted_keys[1:] != sorted_keys[:-1], axis=1)
+        splits = np.where(diff)[0] + 1
+
+        # Split sorted indices into groups
+        grouped_indices = np.split(sort_idx, splits)
+
+        # Filter for clusters with at least 2 points
+        clusters = [pts[idx] for idx in grouped_indices if len(idx) >= 2]
 
         return clusters
 
