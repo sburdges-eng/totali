@@ -113,24 +113,19 @@ class TestEntityID:
 class TestEntityRecord:
     def test_record_structure(self, shield):
         geo = np.array([[0, 0, 0], [1, 1, 1]])
-        rec = shield._entity_record(
-            "abc123", "POLYLINE", "LAYER-DRAFT", geo,
-            confidence=0.9, rule_engine_passed=True, provenance={"test": "ok"},
-        )
+        rec = shield._entity_record("abc123", "POLYLINE", "LAYER-DRAFT", geo)
         assert rec["id"] == "abc123"
         assert rec["type"] == "POLYLINE"
         assert rec["layer"] == "LAYER-DRAFT"
         assert rec["status"] == GeometryStatus.DRAFT.value
         assert len(rec["source_hash"]) == 16
-        assert rec["confidence"] == 0.9
-        assert rec["rule_engine_passed"] is True
-        assert rec["provenance"] == {"test": "ok"}
+
 
     def test_source_hash_deterministic(self, shield):
         geo = np.array([[1.0, 2.0, 3.0]])
         prov = {}
-        r1 = shield._entity_record("a", "LINE", "L", geo, 0.8, True, prov)
-        r2 = shield._entity_record("b", "LINE", "L", geo, 0.8, True, prov)
+        r1 = shield._entity_record("a", "LINE", "L", geo)
+        r2 = shield._entity_record("b", "LINE", "L", geo)
         assert r1["source_hash"] == r2["source_hash"]
 
 
@@ -138,7 +133,7 @@ class TestDXFWriting:
     def test_manual_fallback_writes_file(self, shield, sample_extraction, tmp_path):
         out_path = tmp_path / "test.dxf"
         ctx = PipelineContext(input_path="/f.las", output_dir=tmp_path, input_hash="x")
-        manifest = shield._write_dxf_manual(sample_extraction, out_path, ctx)
+        manifest = shield._write_dxf_manual(sample_extraction, out_path)
         assert out_path.exists()
         assert manifest["format"] == "dxf"
         assert manifest["entity_count"] >= 0
@@ -149,7 +144,7 @@ class TestDXFWriting:
 class TestPhaseRun:
     @patch("totali.cad_shielding.shield.CADShield._write_dxf")
     def test_run_produces_manifest(self, mock_write, shield, tmp_output, sample_extraction, sample_classification):
-        mock_write.side_effect = lambda ext, path, ctx: shield._write_dxf_manual(ext, path, ctx)
+        mock_write.side_effect = lambda ext, path: shield._write_dxf_manual(ext, path)
         ctx = PipelineContext(
             input_path="/f.las", output_dir=tmp_output,
             extraction=sample_extraction,
@@ -168,7 +163,7 @@ class TestPhaseRun:
 
     @patch("totali.cad_shielding.shield.CADShield._write_dxf")
     def test_run_writes_output_files(self, mock_write, shield, tmp_output, sample_extraction, sample_classification):
-        mock_write.side_effect = lambda ext, path, ctx: shield._write_dxf_manual(ext, path, ctx)
+        mock_write.side_effect = lambda ext, path: shield._write_dxf_manual(ext, path)
         ctx = PipelineContext(
             input_path="/f.las", output_dir=tmp_output,
             extraction=sample_extraction,
@@ -191,7 +186,7 @@ class TestPhaseRun:
 
     @patch("totali.cad_shielding.shield.CADShield._write_dxf")
     def test_all_entities_are_draft(self, mock_write, shield, tmp_output, sample_extraction, sample_classification):
-        mock_write.side_effect = lambda ext, path, ctx: shield._write_dxf_manual(ext, path, ctx)
+        mock_write.side_effect = lambda ext, path: shield._write_dxf_manual(ext, path)
         ctx = PipelineContext(
             input_path="/f.las", output_dir=tmp_output,
             extraction=sample_extraction,
@@ -204,3 +199,34 @@ class TestPhaseRun:
         manifest = result.data["manifest"]
         for entity in manifest.get("entities", []):
             assert entity["status"] == "DRAFT"
+
+class TestDXFImportFallback:
+    def test_write_dxf_falls_back_on_import_error(self, shield, sample_extraction, tmp_path):
+        out_path = tmp_path / "fallback.dxf"
+
+        # We need to simulate ImportError for 'import ezdxf' inside _write_dxf.
+        # Since it's a local import, we can use patch.dict on sys.modules.
+        with patch.dict("sys.modules", {"ezdxf": None}):
+            with patch.object(shield, "_write_dxf_manual") as mock_manual:
+                mock_manual.return_value = {"format": "dxf", "manual": True}
+
+                # We also need to ensure _write_dxf_ezdxf is NOT called or fails if it is.
+                # But the try-except is around the 'import ezdxf' itself.
+
+                result = shield._write_dxf(sample_extraction, out_path)
+
+                assert result["manual"] is True
+                mock_manual.assert_called_once_with(sample_extraction, out_path)
+
+    @patch("totali.cad_shielding.shield.CADShield._write_dxf_ezdxf")
+    def test_write_dxf_uses_ezdxf_when_available(self, mock_ezdxf, shield, sample_extraction, tmp_path):
+        out_path = tmp_path / "ezdxf.dxf"
+        mock_ezdxf.return_value = {"format": "dxf", "ezdxf": True}
+
+        # Ensure ezdxf IS available (it should be due to conftest stub or real install)
+        # We don't need to do anything special if it's already in sys.modules
+
+        result = shield._write_dxf(sample_extraction, out_path)
+
+        assert result["ezdxf"] is True
+        mock_ezdxf.assert_called_once_with(sample_extraction, out_path)
