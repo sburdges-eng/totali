@@ -13,7 +13,7 @@ OUTLIER_MEAN_K ?= 8
 OUTLIER_MULTIPLIER ?= 3
 DECIMATION_STEP ?= 2
 CHIPPER_CAPACITY ?= 500
-PG_CONNECTION ?= host='localhost' dbname='lidar' user='lidar' password='lidar'
+PG_CONNECTION ?= host='localhost' dbname='lidar' user='lidar'
 PG_TABLE ?= pc_patches
 PG_SRID ?= 26915
 COPC_THREADS ?= 8
@@ -31,7 +31,7 @@ help:
 	@echo "  clean     Remove output artifacts in $(OUTPUT_DIR)"
 	@echo ""
 	@echo "Override examples:"
-	@echo "  make batch INPUT_DIR=... OUTPUT_DIR=... PG_TABLE=... PG_CONNECTION='host=... dbname=... user=... password=...'"
+	@echo "  make batch INPUT_DIR=... OUTPUT_DIR=... PG_TABLE=... PG_CONNECTION='host=... dbname=... user=...'"
 
 validate:
 	@test -f "$(PDAL_BATCH_RUNNER)" || (echo "Missing runner: $(PDAL_BATCH_RUNNER)" && exit 1)

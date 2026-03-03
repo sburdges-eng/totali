@@ -12,7 +12,6 @@ Usage:
 import argparse
 import logging
 import os
-import sys
 from pathlib import Path
 
 import psycopg2
@@ -23,7 +22,7 @@ SCHEMA_DIR = Path(__file__).resolve().parent.parent / "schema"
 
 DEFAULT_CONN = os.environ.get(
     "GROUNDTRUTH_DB",
-    "dbname=groundtruth user=postgres password=password host=localhost port=5432",
+    "dbname=groundtruth user=postgres host=localhost port=5432",
 )
 
 
