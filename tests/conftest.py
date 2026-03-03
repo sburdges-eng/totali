@@ -127,7 +127,7 @@ sys.modules.setdefault("laspy", _FakeLaspyModule)
 # we need the *import* to succeed but usage to fail.  We patch the test
 # targets individually (see test_shield.py) rather than making the stub
 # raise, which would break the import guard pattern.
-_ensure_stub("ezdxf")
+_ensure_stub("ezdxf", {"new": MagicMock()})
 
 # Stub onnxruntime (optional ML dep)
 _ensure_stub("onnxruntime")

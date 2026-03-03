@@ -2,7 +2,7 @@
 
 import json
 from pathlib import Path
-from unittest.mock import patch
+from unittest.mock import patch, MagicMock
 
 import numpy as np
 import pytest
@@ -114,42 +114,58 @@ class TestEntityRecord:
     def test_record_structure(self, shield):
         geo = np.array([[0, 0, 0], [1, 1, 1]])
         rec = shield._entity_record(
-            "abc123", "POLYLINE", "LAYER-DRAFT", geo,
-            confidence=0.9, rule_engine_passed=True, provenance={"test": "ok"},
+            "abc123", "POLYLINE", "LAYER-DRAFT", geo
         )
         assert rec["id"] == "abc123"
         assert rec["type"] == "POLYLINE"
         assert rec["layer"] == "LAYER-DRAFT"
         assert rec["status"] == GeometryStatus.DRAFT.value
         assert len(rec["source_hash"]) == 16
-        assert rec["confidence"] == 0.9
-        assert rec["rule_engine_passed"] is True
-        assert rec["provenance"] == {"test": "ok"}
 
     def test_source_hash_deterministic(self, shield):
         geo = np.array([[1.0, 2.0, 3.0]])
-        prov = {}
-        r1 = shield._entity_record("a", "LINE", "L", geo, 0.8, True, prov)
-        r2 = shield._entity_record("b", "LINE", "L", geo, 0.8, True, prov)
+        r1 = shield._entity_record("a", "LINE", "L", geo)
+        r2 = shield._entity_record("b", "LINE", "L", geo)
         assert r1["source_hash"] == r2["source_hash"]
 
 
 class TestDXFWriting:
     def test_manual_fallback_writes_file(self, shield, sample_extraction, tmp_path):
         out_path = tmp_path / "test.dxf"
-        ctx = PipelineContext(input_path="/f.las", output_dir=tmp_path, input_hash="x")
-        manifest = shield._write_dxf_manual(sample_extraction, out_path, ctx)
+        manifest = shield._write_dxf_manual(sample_extraction, out_path)
         assert out_path.exists()
         assert manifest["format"] == "dxf"
         assert manifest["entity_count"] >= 0
         content = out_path.read_text()
         assert "EOF" in content
 
+    def test_ezdxf_exception_handling(self, shield, sample_extraction, tmp_path):
+        """Verify exception handling in _write_dxf_ezdxf."""
+        out_path = tmp_path / "test_ezdxf.dxf"
+
+        # Create a mock document and modelspace
+        mock_doc = MagicMock()
+        mock_msp = MagicMock()
+        mock_doc.modelspace.return_value = mock_msp
+
+        # Force add_3dface to raise an exception
+        mock_msp.add_3dface.side_effect = Exception("DXF add error")
+
+        with patch("ezdxf.new", return_value=mock_doc):
+            manifest = shield._write_dxf_ezdxf(sample_extraction, out_path)
+
+        assert manifest["format"] == "dxf"
+        assert manifest["path"] == str(out_path)
+        # Even though 3DFACE additions failed, it should have attempted others and finished
+        assert "entities" in manifest
+        assert mock_msp.add_3dface.called
+        assert mock_doc.saveas.called
+
 
 class TestPhaseRun:
     @patch("totali.cad_shielding.shield.CADShield._write_dxf")
     def test_run_produces_manifest(self, mock_write, shield, tmp_output, sample_extraction, sample_classification):
-        mock_write.side_effect = lambda ext, path, ctx: shield._write_dxf_manual(ext, path, ctx)
+        mock_write.side_effect = lambda ext, path: shield._write_dxf_manual(ext, path)
         ctx = PipelineContext(
             input_path="/f.las", output_dir=tmp_output,
             extraction=sample_extraction,
@@ -168,7 +184,7 @@ class TestPhaseRun:
 
     @patch("totali.cad_shielding.shield.CADShield._write_dxf")
     def test_run_writes_output_files(self, mock_write, shield, tmp_output, sample_extraction, sample_classification):
-        mock_write.side_effect = lambda ext, path, ctx: shield._write_dxf_manual(ext, path, ctx)
+        mock_write.side_effect = lambda ext, path: shield._write_dxf_manual(ext, path)
         ctx = PipelineContext(
             input_path="/f.las", output_dir=tmp_output,
             extraction=sample_extraction,
@@ -191,7 +207,7 @@ class TestPhaseRun:
 
     @patch("totali.cad_shielding.shield.CADShield._write_dxf")
     def test_all_entities_are_draft(self, mock_write, shield, tmp_output, sample_extraction, sample_classification):
-        mock_write.side_effect = lambda ext, path, ctx: shield._write_dxf_manual(ext, path, ctx)
+        mock_write.side_effect = lambda ext, path: shield._write_dxf_manual(ext, path)
         ctx = PipelineContext(
             input_path="/f.las", output_dir=tmp_output,
             extraction=sample_extraction,
