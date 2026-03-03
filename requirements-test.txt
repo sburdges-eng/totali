@@ -1,0 +1,7 @@
+# Test-focused dependencies for local/CI/cloud-agent runs.
+# This avoids heavyweight optional packages in requirements.txt (e.g., pdal)
+# that are not required by the root pytest suite.
+-e .
+pytest>=9.0.2
+scipy>=1.10.0
+pydantic>=2.0.0
