@@ -18,6 +18,12 @@ PHASE_ORDER = ["geodetic", "segment", "extract", "shield", "lint"]
 
 class PipelineOrchestrator:
     def __init__(self, config: dict, audit: AuditLogger, output_dir: Path):
+        from totali.geodetic.gatekeeper import GeodeticGatekeeper
+        from totali.segmentation.classifier import PointCloudClassifier
+        from totali.extraction.extractor import DeterministicExtractor
+        from totali.cad_shielding.shield import CADShield
+        from totali.linting.surveyor_lint import SurveyorLinter
+
         self.config = PipelineConfig.model_validate(config)
         self.audit = audit
         self.output_dir = output_dir
