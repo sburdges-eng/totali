@@ -1,5 +1,7 @@
 """Tests for Phase 3: DeterministicExtractor."""
 
+import sys
+import types
 import numpy as np
 import pytest
 
@@ -119,6 +121,46 @@ class TestClustering:
         pts = np.empty((0, 3))
         clusters = extractor._cluster_points_2d(pts, radius=5.0)
         assert clusters == []
+
+
+class TestBuildingFootprints:
+    def test_returns_empty_when_convex_hull_unavailable(self, extractor, monkeypatch):
+        # Force the import guard in _extract_building_footprints to take the ImportError path.
+        monkeypatch.setitem(sys.modules, "scipy", None)
+        monkeypatch.setitem(sys.modules, "scipy.spatial", None)
+
+        pts = np.random.default_rng(0).uniform(0, 10, size=(10, 3))
+        footprints = extractor._extract_building_footprints(pts)
+        assert footprints == []
+
+    def test_extracts_footprint_when_hull_and_area_are_valid(self, extractor, monkeypatch):
+        class FakeHull:
+            def __init__(self, points_2d):
+                self.vertices = np.array([0, 1, 2, 3], dtype=np.int32)
+                self.volume = 500.0
+
+        fake_spatial = types.ModuleType("scipy.spatial")
+        fake_spatial.ConvexHull = FakeHull
+        fake_scipy = types.ModuleType("scipy")
+        fake_scipy.spatial = fake_spatial
+
+        monkeypatch.setitem(sys.modules, "scipy", fake_scipy)
+        monkeypatch.setitem(sys.modules, "scipy.spatial", fake_spatial)
+
+        # One cluster with >= 4 points and wide spacing to satisfy default min area checks.
+        pts = np.array(
+            [
+                [0.0, 0.0, 10.0],
+                [1.0, 0.0, 10.0],
+                [1.0, 1.0, 10.0],
+                [0.0, 1.0, 10.0],
+                [0.5, 0.5, 10.0],
+            ]
+        )
+
+        footprints = extractor._extract_building_footprints(pts)
+        assert len(footprints) == 1
+        assert footprints[0].shape == (4, 2)
 
 
 class TestQAFlags:
