@@ -1,5 +1,11 @@
+import os
 import sys
 from unittest.mock import MagicMock
+
+# Ensure groundtruthos-data/ is on sys.path so `pipeline.decimation` can be found
+_GROUNDTRUTHOS_DATA = os.path.abspath(os.path.join(os.path.dirname(__file__), "..", "groundtruthos-data"))
+if _GROUNDTRUTHOS_DATA not in sys.path:
+    sys.path.insert(0, _GROUNDTRUTHOS_DATA)
 
 # Mock dependencies before importing the module under test
 sys.modules["laspy"] = MagicMock()
