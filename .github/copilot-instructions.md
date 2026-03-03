@@ -24,9 +24,10 @@ The repo has four main components:
 **Python 3.11** is the target runtime (used in CI).
 
 ```bash
-pip install -e .          # installs totali package + core deps
-pip install pytest        # test runner (not in setup.py)
+bash tools/bootstrap_cloud_agent_env.sh
 ```
+
+The bootstrap script preinstalls test dependencies (`pytest`, `scipy`, `pydantic`), installs test-relevant root requirements from `requirements.txt`, and installs editable packages for `totali`, `laser-suite`, and `survey-automation-roadmap`.
 
 For optional extras: `pip install -e ".[ml]"` (ONNX/Open3D), `pip install -e ".[cad]"` (ezdxf), `pip install -e ".[full]"` (everything).
 
