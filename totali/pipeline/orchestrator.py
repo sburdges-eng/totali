@@ -22,6 +22,13 @@ class PipelineOrchestrator:
         self.audit = audit
         self.output_dir = output_dir
 
+        # Local imports to prevent circular dependency
+        from totali.geodetic.gatekeeper import GeodeticGatekeeper
+        from totali.segmentation.classifier import PointCloudClassifier
+        from totali.extraction.extractor import DeterministicExtractor
+        from totali.cad_shielding.shield import CADShield
+        from totali.linting.surveyor_lint import SurveyorLinter
+
         # Initialize phase processors
         from totali.geodetic.gatekeeper import GeodeticGatekeeper
         from totali.segmentation.classifier import PointCloudClassifier
