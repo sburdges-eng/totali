@@ -4,6 +4,16 @@
 
 This is a pure-Python monorepo with four sub-projects. No Docker, Node.js, or external services are required for development.
 
+### Cloud bootstrap (run first)
+
+Use the shared bootstrap script to preinstall test dependencies and editable packages:
+
+```bash
+bash tools/bootstrap_cloud_agent_env.sh
+```
+
+This installs `pytest`, `scipy`, and `pydantic` explicitly, then installs the root test-relevant subset from `requirements.txt` (`numpy`, `scipy`, `laspy`, `pyproj`, `pyyaml`, `click`, `pydantic`) and editable installs for `totali`, `laser-suite`, and `survey-automation-roadmap`.
+
 ### Sub-projects
 
 | Sub-project | Directory | Install | Test |
