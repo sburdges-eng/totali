@@ -63,6 +63,7 @@ class PipelineContext(BaseModel):
     healing: HealingReport | None = None
     lint_items: list[LintItem] = Field(default_factory=list)
     lint_report: dict[str, Any] | None = None
+    survey_intent: dict[str, Any] | None = None
 
     last_output_files: list[Path] = Field(default_factory=list)
     phase_status: dict[str, str] = Field(default_factory=dict)
