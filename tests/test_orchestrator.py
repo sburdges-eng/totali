@@ -92,6 +92,55 @@ class TestErrorHandling:
         with pytest.raises(RuntimeError, match="boom"):
             orch.run("/fake.las", phase="geodetic")
 
+    def test_phase_exception_records_state(self, audit_logger, sample_config, tmp_output):
+        """Verify that when an exception occurs, PipelineResult and PipelineContext are updated before reraise."""
+        orch = PipelineOrchestrator(sample_config, audit_logger, tmp_output)
+
+        mock_phase = MagicMock()
+        mock_phase.validate_inputs.return_value = (True, [])
+        mock_phase.run.side_effect = RuntimeError("geodetic boom")
+        orch.phases["geodetic"] = mock_phase
+
+        captured_result = None
+        captured_context = None
+
+        original_result_cls = PipelineResult
+        original_context_cls = PipelineContext
+
+        def mock_result_side_effect(*args, **kwargs):
+            nonlocal captured_result
+            captured_result = original_result_cls(*args, **kwargs)
+            return captured_result
+
+        def mock_context_side_effect(*args, **kwargs):
+            nonlocal captured_context
+            captured_context = original_context_cls(*args, **kwargs)
+            return captured_context
+
+        with patch("totali.pipeline.orchestrator.PipelineResult", side_effect=mock_result_side_effect),              patch("totali.pipeline.orchestrator.PipelineContext", side_effect=mock_context_side_effect):
+
+            with pytest.raises(RuntimeError, match="geodetic boom"):
+                orch.run("/fake.las", phase="geodetic")
+
+        # Verify result state
+        assert captured_result is not None
+        assert captured_result.success is False
+        assert len(captured_result.phases) == 1
+        assert captured_result.phases[0].phase == "geodetic"
+        assert captured_result.phases[0].success is False
+        assert "geodetic boom" in captured_result.phases[0].message
+
+        # Verify context state
+        assert captured_context is not None
+        assert captured_context.phase_status["geodetic"] == "exception"
+        assert any("geodetic boom" in err for err in captured_context.errors)
+
+        # Verify audit log
+        events = audit_logger.get_events("phase_exception")
+        assert len(events) == 1
+        assert events[0]["data"]["phase"] == "geodetic"
+        assert "geodetic boom" in events[0]["data"]["error"]
+
     def test_failed_phase_sets_context_status(self, audit_logger, sample_config, tmp_output):
         orch = PipelineOrchestrator(sample_config, audit_logger, tmp_output)
 
