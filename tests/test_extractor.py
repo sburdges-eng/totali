@@ -2,6 +2,7 @@
 
 import numpy as np
 import pytest
+from unittest.mock import patch, MagicMock
 
 from totali.extraction.extractor import DeterministicExtractor
 from totali.pipeline.context import PipelineContext
@@ -66,13 +67,10 @@ class TestDTMBuilding:
 
     def test_empty_ground_returns_empty(self, extractor):
         pts = np.zeros((2, 3))  # Not enough for triangulation
-        # Delaunay needs at least 3 non-collinear points; this should
-        # either produce empty faces or raise (which _build_dtm doesn't guard)
-        # At minimum, it shouldn't crash silently.
         try:
             vertices, faces, metrics = extractor._build_dtm(pts)
         except Exception:
-            pass  # acceptable — insufficient points
+            pass  # acceptable
 
 
 class TestBreaklineExtraction:
@@ -161,3 +159,88 @@ class TestPhaseRun:
         result = extractor.run(ctx)
         assert result.success is False
         assert "ground" in result.message.lower() or "Insufficient" in result.message
+
+
+class TestImportErrors:
+    def test_extract_polygonal_features_handles_import_error(self, extractor):
+        """Test that _extract_polygonal_features returns empty list on ImportError."""
+        pts = np.array([
+            [0, 0, 0], [1, 0, 0], [1, 1, 0], [0, 1, 0]
+        ])
+
+        import builtins
+        original_import = builtins.__import__
+
+        def mock_import(name, *args, **kwargs):
+            if name == 'scipy.spatial':
+                raise ImportError("Mocked ImportError")
+            return original_import(name, *args, **kwargs)
+
+        with patch('builtins.__import__', side_effect=mock_import):
+            polygons = extractor._extract_polygonal_features(pts)
+            assert polygons == []
+
+    def test_extract_building_footprints_handles_import_error(self, extractor):
+        """Test that _extract_building_footprints returns empty list on ImportError."""
+        pts = np.array([
+            [0, 0, 0], [1, 0, 0], [1, 1, 0], [0, 1, 0]
+        ])
+
+        import builtins
+        original_import = builtins.__import__
+
+        def mock_import(name, *args, **kwargs):
+            if name == 'scipy.spatial':
+                raise ImportError("Mocked ImportError")
+            return original_import(name, *args, **kwargs)
+
+        with patch('builtins.__import__', side_effect=mock_import):
+            footprints = extractor._extract_building_footprints(pts)
+            assert footprints == []
+
+class TestClusteringExtended:
+    @pytest.fixture
+    def pts_2d(self):
+        return np.array([
+            [0.1, 0.1, 5.0],
+            [0.3, 0.3, 10.0],
+            [10.0, 10.0, 15.0],
+            [10.2, 10.2, 20.0],
+        ])
+
+    def test_single_point(self, extractor):
+        pts = np.array([[1.0, 1.0, 1.0]])
+        assert extractor._cluster_points_2d(pts, radius=1.0) == []
+
+    def test_points_far_apart(self, extractor):
+        pts = np.array([[0, 0, 0], [10, 10, 0]])
+        assert extractor._cluster_points_2d(pts, radius=1.0) == []
+
+    def test_multiple_clusters(self, extractor, pts_2d):
+        clusters = extractor._cluster_points_2d(pts_2d, radius=1.0)
+        assert len(clusters) == 2
+        # Check Z preservation
+        assert any(5.0 in c[:, 2] for c in clusters)
+        assert any(20.0 in c[:, 2] for c in clusters)
+
+    def test_grid_boundary(self, extractor):
+        # grid_size = 2.0 (radius=1.0)
+        # 1.99 -> cell 0, 2.0 -> cell 1
+        pts = np.array([
+            [1.9, 0, 0], [1.95, 0, 0],
+            [2.0, 0, 0], [2.1, 0, 0]
+        ])
+        clusters = extractor._cluster_points_2d(pts, radius=1.0)
+        assert len(clusters) == 2
+        assert len(clusters[0]) == 2
+        assert len(clusters[1]) == 2
+
+    @pytest.mark.parametrize("radius, expected_count", [
+        (0.1, 0),
+        (1.0, 1),
+        (10.0, 1),
+    ])
+    def test_radius_scaling(self, extractor, radius, expected_count):
+        pts = np.array([[0, 0, 0], [1, 1, 0]])
+        clusters = extractor._cluster_points_2d(pts, radius=radius)
+        assert len(clusters) == expected_count
