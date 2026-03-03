@@ -118,15 +118,14 @@ _ensure_stub("pyproj", {
 _ensure_stub("pyproj.exceptions", {"CRSError": type("CRSError", (Exception,), {})})
 
 # Stub laspy
-sys.modules.setdefault("laspy", _FakeLaspyModule)
+try:
+    import laspy
+except ImportError:
+    sys.modules.setdefault("laspy", _FakeLaspyModule)
 
 # ezdxf is optional — stub it so `import ezdxf` succeeds at the module
 # level (avoids circular-import issues during collection) but any call to
 # ezdxf.new() or other real API methods triggers the fallback path.
-# The shield code does `try: import ezdxf ... except ImportError`, so
-# we need the *import* to succeed but usage to fail.  We patch the test
-# targets individually (see test_shield.py) rather than making the stub
-# raise, which would break the import guard pattern.
 _ensure_stub("ezdxf")
 
 # Stub onnxruntime (optional ML dep)

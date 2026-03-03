@@ -2,11 +2,12 @@
 
 import numpy as np
 import pytest
+from unittest.mock import patch, MagicMock
 
 from totali.segmentation.classifier import PointCloudClassifier
 from totali.pipeline.context import PipelineContext
 from totali.pipeline.models import PhaseResult, ClassificationResult, CRSMetadata, PointCloudStats
-
+from tests.conftest import _FakeLasData
 
 @pytest.fixture
 def classifier(audit_logger, sample_config):
@@ -59,15 +60,17 @@ class TestRuleBasedFallback:
         ground_mask = result.labels == 2
         assert ground_mask.sum() > 0
 
-    def test_existing_classification_trusted(self, classifier):
+    @patch("laspy.read")
+    def test_existing_classification_trusted(self, mock_read, classifier):
         """When LAS already has classification, it should be preferred."""
-        import laspy
-        las = laspy.read("fake")
-        n = len(las.points)
-        las.classification = np.full(n, 6, dtype=np.uint8)  # all building
-        xyz = np.column_stack([las.x, las.y, las.z])
+        fake_las = _FakeLasData()
+        n = len(fake_las.points)
+        fake_las.classification = np.full(n, 6, dtype=np.uint8)  # all building
+        mock_read.return_value = fake_las
 
-        result = classifier._classify_rules(xyz, las)
+        xyz = np.column_stack([fake_las.x, fake_las.y, fake_las.z])
+
+        result = classifier._classify_rules(xyz, fake_las)
         building_count = np.sum(result.labels == 6)
         assert building_count == n
         assert np.all(result.confidences[result.labels == 6] == 0.85)
@@ -92,11 +95,13 @@ class TestOcclusionDetection:
 
 
 class TestFeatureBuilding:
-    def test_xyz_only_features(self, classifier):
-        import laspy
-        las = laspy.read("fake")
-        xyz = np.column_stack([las.x, las.y, las.z])
-        features = classifier._build_features(xyz, las)
+    @patch("laspy.read")
+    def test_xyz_only_features(self, mock_read, classifier):
+        fake_las = _FakeLasData()
+        mock_read.return_value = fake_las
+
+        xyz = np.column_stack([fake_las.x, fake_las.y, fake_las.z])
+        features = classifier._build_features(xyz, fake_las)
         assert features.shape[0] == len(xyz)
         assert features.shape[1] >= 3
 
