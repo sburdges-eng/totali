@@ -30,7 +30,8 @@ import pytest
 def _load_parser_module():
     parser_path = (
         Path(__file__).resolve().parents[1]
-        / "survey-automation-roadmap"
+        / "groundtruthos-data"
+        / "survey-automation"
         / "dwg-tool-parser"
         / "scripts"
         / "parse_dwg.py"

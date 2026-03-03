@@ -52,10 +52,16 @@ def test_pipeline_run_on_totali_dataset(repo_root, tmp_path) -> None:
     assert _count_rows(run_root / "quarantine/quarantined_rows.csv") >= 1
 
     quarantined_files = json.loads((run_root / "quarantine/quarantined_files.json").read_text(encoding="utf-8"))
-    reasons = {entry["reason"] for entry in quarantined_files["files"]}
+    reasons = {entry["reason"] for entry in quarantined_files["data"]["files"]}
     assert "binary_crd_converter_missing" in reasons
     assert "unsupported_file_type" in reasons
 
     manifest = json.loads((run_root / "manifest/run_manifest.json").read_text(encoding="utf-8"))
-    assert manifest["summary"]["files_total"] >= 10
-    assert manifest["summary"]["files_processed"] >= 3
+    assert manifest["data"]["summary"]["files_total"] >= 10
+    assert manifest["data"]["summary"]["files_processed"] >= 3
+    assert "phase_presentation" in manifest["data"]
+    assert manifest["data"]["phase_presentation"]["phase_1"]["status"] == "pass"
+    assert manifest["data"]["phase_presentation"]["phase_3"]["status"] == "warning"
+    summary = json.loads((run_root / "reports/qc_summary.json").read_text(encoding="utf-8"))
+    assert "phase_presentation" in summary["data"]
+    assert summary["data"]["phase_presentation"]["ground_truth"]["evidence"]["snapshot_id"].startswith("sha256:")
