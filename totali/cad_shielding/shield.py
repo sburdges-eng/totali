@@ -186,18 +186,18 @@ class CADShield(PipelinePhase):
 
         # Create layers
         for layer_name in self.layer_map.values():
-            doc.layers.add(layer_name)
+            doc.layers.add(self._sanitize_dxf_string(layer_name))
 
         # DTM as 3DFACE entities
         if extraction.dtm_vertices is not None and extraction.dtm_faces is not None:
-            layer = self.layer_map.get("ground_surface", "TOTaLi-SURV-DTM-DRAFT")
+            layer = self._sanitize_dxf_string(self.layer_map.get("ground_surface", "TOTaLi-SURV-DTM-DRAFT"))
             for face in extraction.dtm_faces:
                 v = extraction.dtm_vertices[face]
                 entity_id = self._entity_id()
                 try:
                     msp.add_3dface(
                         [tuple(v[0]), tuple(v[1]), tuple(v[2]), tuple(v[2])],
-                        dxfattribs={"layer": layer},
+                        dxfattribs={"layer": self._sanitize_dxf_string(layer)},
                     )
                     entities.append(self._entity_record(
                         entity_id, "3DFACE", layer, v
@@ -206,13 +206,13 @@ class CADShield(PipelinePhase):
                     pass
 
         # Breaklines as POLYLINE
-        layer = self.layer_map.get("breaklines", "TOTaLi-SURV-BRKLN-DRAFT")
+        layer = self._sanitize_dxf_string(self.layer_map.get("breaklines", "TOTaLi-SURV-BRKLN-DRAFT"))
         for line in extraction.breaklines:
             entity_id = self._entity_id()
             try:
                 msp.add_polyline3d(
                     [tuple(p) for p in line],
-                    dxfattribs={"layer": layer},
+                    dxfattribs={"layer": self._sanitize_dxf_string(layer)},
                 )
                 entities.append(self._entity_record(entity_id, "POLYLINE", layer, line))
             except Exception:
@@ -223,64 +223,64 @@ class CADShield(PipelinePhase):
             (extraction.contours_minor, "contours_minor"),
             (extraction.contours_index, "contours_index"),
         ]:
-            layer = self.layer_map.get(layer_key, f"TOTaLi-SURV-CONT-{layer_key.upper()}-DRAFT")
+            layer = self._sanitize_dxf_string(self.layer_map.get(layer_key, f"TOTaLi-SURV-CONT-{layer_key.upper()}-DRAFT"))
             for seg in contour_list:
                 entity_id = self._entity_id()
                 try:
                     msp.add_lwpolyline(
                         [tuple(p) for p in seg],
-                        dxfattribs={"layer": layer},
+                        dxfattribs={"layer": self._sanitize_dxf_string(layer)},
                     )
                     entities.append(self._entity_record(entity_id, "LWPOLYLINE", layer, seg))
                 except Exception:
                     pass
 
         # Building footprints
-        layer = self.layer_map.get("buildings", "TOTaLi-PLAN-BLDG-DRAFT")
+        layer = self._sanitize_dxf_string(self.layer_map.get("buildings", "TOTaLi-PLAN-BLDG-DRAFT"))
         for poly in extraction.building_footprints:
             entity_id = self._entity_id()
             try:
                 pts = [tuple(p) for p in poly]
                 pts.append(pts[0])  # close polygon
-                msp.add_lwpolyline(pts, close=True, dxfattribs={"layer": layer})
+                msp.add_lwpolyline(pts, close=True, dxfattribs={"layer": self._sanitize_dxf_string(layer)})
                 entities.append(self._entity_record(entity_id, "POLYGON", layer, poly))
             except Exception:
                 pass
 
         # Curbs
-        layer = self.layer_map.get("curbs", "TOTaLi-PLAN-CURB-DRAFT")
+        layer = self._sanitize_dxf_string(self.layer_map.get("curbs", "TOTaLi-PLAN-CURB-DRAFT"))
         for line in extraction.curb_lines:
             entity_id = self._entity_id()
             try:
                 msp.add_polyline3d(
                     [tuple(p) for p in line],
-                    dxfattribs={"layer": layer},
+                    dxfattribs={"layer": self._sanitize_dxf_string(layer)},
                 )
                 entities.append(self._entity_record(entity_id, "POLYLINE", layer, line))
             except Exception:
                 pass
 
         # Wire
-        layer = self.layer_map.get("wire", "TOTaLi-PLAN-WIRE-DRAFT")
+        layer = self._sanitize_dxf_string(self.layer_map.get("wire", "TOTaLi-PLAN-WIRE-DRAFT"))
         for line in extraction.wire_lines:
             entity_id = self._entity_id()
             try:
                 msp.add_polyline3d(
                     [tuple(p) for p in line],
-                    dxfattribs={"layer": layer},
+                    dxfattribs={"layer": self._sanitize_dxf_string(layer)},
                 )
                 entities.append(self._entity_record(entity_id, "POLYLINE", layer, line))
             except Exception:
                 pass
 
         # Occlusion zones
-        layer = self.layer_map.get("occlusion_zones", "TOTaLi-QA-OCCLUSION")
+        layer = self._sanitize_dxf_string(self.layer_map.get("occlusion_zones", "TOTaLi-QA-OCCLUSION"))
         for poly in extraction.occlusion_zones:
             entity_id = self._entity_id()
             try:
                 pts = [tuple(p) for p in poly]
                 pts.append(pts[0])
-                msp.add_lwpolyline(pts, close=True, dxfattribs={"layer": layer})
+                msp.add_lwpolyline(pts, close=True, dxfattribs={"layer": self._sanitize_dxf_string(layer)})
                 entities.append(self._entity_record(entity_id, "OCCLUSION_ZONE", layer, poly))
             except Exception:
                 pass
@@ -303,14 +303,14 @@ class CADShield(PipelinePhase):
         ]
 
         # Write breaklines as LINE entities
-        layer = self.layer_map.get("breaklines", "TOTaLi-SURV-BRKLN-DRAFT")
+        layer = self._sanitize_dxf_string(self.layer_map.get("breaklines", "TOTaLi-SURV-BRKLN-DRAFT"))
         for brk in extraction.breaklines:
             for i in range(len(brk) - 1):
                 entity_id = self._entity_id()
                 p0, p1 = brk[i], brk[i + 1]
                 lines.extend([
                     "0", "LINE",
-                    "8", layer,
+                    "8", self._sanitize_dxf_string(layer),
                     "10", str(p0[0]), "20", str(p0[1]), "30", str(p0[2]),
                     "11", str(p1[0]), "21", str(p1[1]), "31", str(p1[2]),
                 ])
@@ -348,3 +348,9 @@ class CADShield(PipelinePhase):
             "rule_engine_passed": rule_engine_passed,
             "provenance": provenance or {},
         }
+
+    def _sanitize_dxf_string(self, text: str) -> str:
+        """Sanitize strings to prevent DXF injection by removing newlines."""
+        if not isinstance(text, str):
+            return str(text)
+        return text.replace("\n", " ").replace("\r", " ")
