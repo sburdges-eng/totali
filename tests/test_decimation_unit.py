@@ -1,22 +1,23 @@
 import sys
-from unittest.mock import MagicMock
+from unittest.mock import MagicMock, patch
 
-# Mock dependencies before importing the module under test
-sys.modules["laspy"] = MagicMock()
-# Mock numpy more carefully to avoid breaking pytest.approx
 mock_np = MagicMock()
 mock_np.bool_ = bool
-sys.modules["numpy"] = mock_np
-sys.modules["psycopg2"] = MagicMock()
 
 import pytest
-from pipeline.decimation import (
-    compute_adaptive_voxel_size,
-    compute_density,
-    should_protect_region,
-    DEFAULT_BASE_VOXEL,
-    BREAKLINE_Z_STD_THRESHOLD
-)
+
+# Mock dependencies only while importing the module under test.
+with patch.dict(
+    sys.modules,
+    {"laspy": MagicMock(), "numpy": mock_np, "psycopg2": MagicMock()},
+):
+    from pipeline.decimation import (
+        compute_adaptive_voxel_size,
+        compute_density,
+        should_protect_region,
+        DEFAULT_BASE_VOXEL,
+        BREAKLINE_Z_STD_THRESHOLD
+    )
 
 def test_compute_adaptive_voxel_size():
     # Test with current_density <= 0 or target_density <= 0
