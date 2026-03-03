@@ -1,0 +1,17 @@
+.DS_Store
+**/.DS_Store
+__pycache__/
+**/__pycache__/
+*.pyc
+*.pyo
+*.egg-info/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.qodo/
+.vscode/
+TOTaLi-1/
+worktrees/
+totali-baton/
+audit_logs/
+tmp/
