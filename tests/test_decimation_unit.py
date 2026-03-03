@@ -1,5 +1,9 @@
+import os
 import sys
 from unittest.mock import MagicMock
+
+# Ensure groundtruthos-data is on sys.path so `pipeline` package is importable
+sys.path.insert(0, os.path.join(os.path.dirname(__file__), "..", "groundtruthos-data"))
 
 # Mock dependencies before importing the module under test
 sys.modules["laspy"] = MagicMock()
