@@ -1,10 +1,9 @@
 """Tests for AuditLogger hash-chaining and verification."""
 
 import json
-from pathlib import Path
-
+import os
 import pytest
-
+from pathlib import Path
 from totali.audit.logger import AuditLogger
 
 
@@ -13,11 +12,17 @@ class TestAuditLoggerBasics:
         log_dir = tmp_path / "new_audit"
         AuditLogger(log_dir=str(log_dir), project_id="p1")
         assert log_dir.exists()
+        # Check permissions (0700)
+        mode = os.stat(log_dir).st_mode & 0o777
+        assert mode == 0o700
 
     def test_log_creates_file(self, tmp_path):
         logger = AuditLogger(log_dir=str(tmp_path), project_id="p1")
         logger.log("test_event", {"key": "value"})
         assert logger.log_path.exists()
+        # Check file permissions (0600)
+        mode = os.stat(logger.log_path).st_mode & 0o777
+        assert mode == 0o600
 
     def test_log_writes_jsonl(self, tmp_path):
         logger = AuditLogger(log_dir=str(tmp_path), project_id="p1")
@@ -148,3 +153,8 @@ class TestSummary:
         assert s["chain_valid"] is True
         assert s["first_event"] is not None
         assert s["last_event"] is not None
+
+class TestAuditSecurity:
+    def test_project_id_validation(self, tmp_path):
+        with pytest.raises(ValueError, match="Invalid project_id"):
+            AuditLogger(log_dir=str(tmp_path), project_id="../evil")

@@ -132,6 +132,20 @@ _ensure_stub("ezdxf")
 # Stub onnxruntime (optional ML dep)
 _ensure_stub("onnxruntime")
 
+# Additional stubs for scipy, open3d, triangle
+_ensure_stub("scipy")
+_ensure_stub("scipy.spatial", {
+    "Delaunay": MagicMock(),
+    "ConvexHull": MagicMock(),
+    "QhullError": type("QhullError", (Exception,), {}),
+})
+_ensure_stub("scipy.ndimage", {
+    "uniform_filter1d": MagicMock(),
+})
+_ensure_stub("open3d")
+_ensure_stub("triangle")
+_ensure_stub("matplotlib")
+_ensure_stub("matplotlib.pyplot")
 
 # ---------------------------------------------------------------------------
 # Fixtures
