@@ -33,12 +33,8 @@ import sys
 from pathlib import Path
 
 from config import load_sources
-from downloader.client import DatasetClient
 from downloader.tile_listing import USGSTNMLister, OpenTopographyLister
 from downloader.bulk_downloader import BulkDownloader
-from downloader.validator import validate_file
-from downloader.metadata import extract_metadata
-from downloader.normalizer import reproject_laz, reproject_geotiff
 from downloader.registry import DatasetRegistry
 from downloader.tiler import tile_lidar_file, batch_generate_height_maps
 from storage.layout import StorageLayout
@@ -215,7 +211,7 @@ def cmd_download(args):
             )
 
     # Print summary
-    print(f"\nDownload Summary:")
+    print("\nDownload Summary:")
     print(f"  Total:     {report.total}")
     print(f"  Succeeded: {report.succeeded}")
     print(f"  Failed:    {report.failed}")
@@ -256,7 +252,7 @@ def cmd_tile(args):
     with open(manifest_path, "w") as f:
         json.dump(all_tiles, f, indent=2)
 
-    print(f"\nTiling Summary:")
+    print("\nTiling Summary:")
     print(f"  Input files: {len(files)}")
     print(f"  Output tiles: {len(all_tiles)}")
     print(f"  Manifest: {manifest_path}")
@@ -282,7 +278,7 @@ def cmd_heightmaps(args):
     if results:
         avg_coverage = sum(r["coverage_pct"] for r in results) / len(results)
         avg_density = sum(r["mean_density"] for r in results) / len(results)
-        print(f"\nHeight Map Summary:")
+        print("\nHeight Map Summary:")
         print(f"  Generated: {len(results)}")
         print(f"  Grid size: {results[0]['grid_size']}x{results[0]['grid_size']}")
         print(f"  Resolution: {args.resolution}m")
