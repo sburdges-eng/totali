@@ -148,3 +148,17 @@ class TestSummary:
         assert s["chain_valid"] is True
         assert s["first_event"] is not None
         assert s["last_event"] is not None
+
+class TestAuditLoggerSecurity:
+    def test_path_traversal_protection(self, tmp_path):
+        log_dir = tmp_path / "audit_logs"
+        # Malicious project_id attempting to write outside the log_dir
+        malicious_project_id = "../evil_project"
+
+        logger = AuditLogger(log_dir=str(log_dir), project_id=malicious_project_id)
+
+        # Check if the log_path is inside the intended log_dir
+        # os.path.basename("../evil_project") should result in "evil_project"
+        assert logger.project_id == "evil_project"
+        assert logger.log_path.parent == log_dir
+        assert log_dir in logger.log_path.parents
