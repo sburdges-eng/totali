@@ -161,3 +161,77 @@ class TestPhaseRun:
         result = extractor.run(ctx)
         assert result.success is False
         assert "ground" in result.message.lower() or "Insufficient" in result.message
+
+class TestContourAtElevation:
+    def test_interpolates_crossing_segment(self, extractor):
+        # Single triangle
+        # V0: (0, 0, 100)
+        # V1: (10, 0, 110)
+        # V2: (0, 10, 105)
+        vertices = np.array([
+            [0, 0, 100.0],
+            [10, 0, 110.0],
+            [0, 10, 105.0]
+        ])
+        faces = np.array([[0, 1, 2]])
+
+        # Elevation 102.5 should cross edges (0,1) and (0,2)
+        # Edge (0,1): t = (102.5 - 100) / (110 - 100) = 2.5 / 10 = 0.25
+        # P1 = (0,0) + 0.25 * ((10,0) - (0,0)) = (2.5, 0)
+
+        # Edge (0,2): t = (102.5 - 100) / (105 - 100) = 2.5 / 5 = 0.5
+        # P2 = (0,0) + 0.5 * ((0,10) - (0,0)) = (0, 5)
+
+        segments = extractor._contour_at_elevation(vertices, faces, 102.5)
+        assert len(segments) == 1
+        seg = segments[0]
+        assert seg.shape == (2, 2)
+
+        # Check coordinates (order might vary)
+        expected = {tuple([2.5, 0.0]), tuple([0.0, 5.0])}
+        actual = {tuple(p) for p in seg}
+        assert actual == expected
+
+    def test_no_segments_when_elevation_out_of_range(self, extractor):
+        vertices = np.array([
+            [0, 0, 100.0],
+            [10, 0, 110.0],
+            [0, 10, 105.0]
+        ])
+        faces = np.array([[0, 1, 2]])
+
+        # Below range
+        assert extractor._contour_at_elevation(vertices, faces, 99.0) == []
+        # Above range
+        assert extractor._contour_at_elevation(vertices, faces, 111.0) == []
+
+    def test_multiple_faces(self, extractor):
+        # Two triangles sharing an edge (1,2)
+        vertices = np.array([
+            [0, 0, 100.0],
+            [10, 0, 110.0],
+            [0, 10, 105.0],
+            [10, 10, 115.0]
+        ])
+        faces = np.array([
+            [0, 1, 2],
+            [1, 3, 2]
+        ])
+
+        # Elevation 107.5
+        # Face [0,1,2]:
+        #   (0,1) crosses: (107.5-100)/(110-100) = 0.75 -> (7.5, 0)
+        #   (0,2) crosses: (107.5-100)/(105-100) = 1.5 -> No
+        #   (1,2) crosses: (107.5-110)/(105-110) = -2.5/-5 = 0.5 -> (5, 5)
+        #   Face 0 segment: [(7.5, 0), (5, 5)]
+
+        # Face [1,3,2]:
+        #   (1,3) crosses: (107.5-110)/(115-110) = -2.5/5 = No (oops, 110 to 115)
+        #   Actually (1,3): (107.5-110) * (115-107.5) = -2.5 * 7.5 < 0 -> Yes
+        #   (1,3) crosses: (107.5-110)/(115-110) = 0.5 (wait, (107.5-110)/5 = -0.5, something is wrong with my math)
+        #   Let's re-eval (z1-elev)*(z3-elev) = (110-107.5)*(115-107.5) = 2.5 * 7.5 > 0 -> No cross
+        #   (1,2) crosses: (110-107.5)*(105-107.5) = 2.5 * -2.5 < 0 -> Yes
+        #   (3,2) crosses: (115-107.5)*(105-107.5) = 7.5 * -2.5 < 0 -> Yes
+
+        segments = extractor._contour_at_elevation(vertices, faces, 107.5)
+        assert len(segments) == 2
