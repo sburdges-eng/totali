@@ -297,29 +297,36 @@ class CADShield(PipelinePhase):
     def _write_dxf_manual(self, extraction: ExtractionResult, path: Path, context: PipelineContext = None) -> dict:
         """Minimal DXF writer fallback when ezdxf is not available."""
         entities = []
-        lines = [
-            "0", "SECTION", "2", "HEADER", "0", "ENDSEC",
-            "0", "SECTION", "2", "ENTITIES",
-        ]
-
-        # Write breaklines as LINE entities
         layer = self.layer_map.get("breaklines", "TOTaLi-SURV-BRKLN-DRAFT")
-        for brk in extraction.breaklines:
-            for i in range(len(brk) - 1):
-                entity_id = self._entity_id()
-                p0, p1 = brk[i], brk[i + 1]
-                lines.extend([
-                    "0", "LINE",
-                    "8", layer,
-                    "10", str(p0[0]), "20", str(p0[1]), "30", str(p0[2]),
-                    "11", str(p1[0]), "21", str(p1[1]), "31", str(p1[2]),
-                ])
-                entities.append(self._entity_record(entity_id, "LINE", layer, brk))
-
-        lines.extend(["0", "ENDSEC", "0", "EOF"])
 
         with open(path, "w") as f:
-            f.write("\n".join(lines))
+            # Header
+            f.write("0\nSECTION\n2\nHEADER\n0\nENDSEC\n")
+            f.write("0\nSECTION\n2\nENTITIES\n")
+
+            # Write breaklines as LINE entities
+            # We use a small local buffer to reduce I/O calls while keeping memory low
+            buf = []
+            for brk in extraction.breaklines:
+                for i in range(len(brk) - 1):
+                    entity_id = self._entity_id()
+                    p0, p1 = brk[i], brk[i + 1]
+                    buf.extend([
+                        "0", "LINE",
+                        "8", layer,
+                        "10", str(p0[0]), "20", str(p0[1]), "30", str(p0[2]),
+                        "11", str(p1[0]), "21", str(p1[1]), "31", str(p1[2]),
+                    ])
+                    entities.append(self._entity_record(entity_id, "LINE", layer, brk))
+
+                    if len(buf) >= 1000:
+                        f.write("\n".join(buf) + "\n")
+                        buf = []
+
+            if buf:
+                f.write("\n".join(buf) + "\n")
+
+            f.write("0\nENDSEC\n0\nEOF")
 
         return {
             "format": "dxf",
