@@ -1499,3 +1499,37 @@ class TestEndToEnd:
         assert "LOT-BOUNDARY" in layers
         assert "ROAD-CENTERLINE" in layers
         assert "GPS-CONTROL" in layers
+
+class TestMatchedDomainKeywords:
+    def test_matches_found(self, parser):
+        with patch.dict(parser.SURVEY_DOMAIN_KEYWORDS, {"test_domain": ["keyword_1", "keyword_2"]}):
+            # keyword_1 is normalized to keyword1
+            tokens = {"keyword1", "keyword2", "keyword3"}
+            result = parser.matched_domain_keywords(tokens, "test_domain")
+            assert result == ["keyword_1", "keyword_2"]
+
+    def test_no_matches(self, parser):
+        with patch.dict(parser.SURVEY_DOMAIN_KEYWORDS, {"test_domain": ["keyword_1", "keyword_2"]}):
+            tokens = {"keyword_3", "keyword_4"}
+            result = parser.matched_domain_keywords(tokens, "test_domain")
+            assert result == []
+
+    def test_unknown_domain(self, parser):
+        with patch.dict(parser.SURVEY_DOMAIN_KEYWORDS, {"test_domain": ["keyword_1"]}):
+            tokens = {"keyword_1"}
+            result = parser.matched_domain_keywords(tokens, "unknown_domain")
+            assert result == []
+
+    def test_empty_tokens(self, parser):
+        with patch.dict(parser.SURVEY_DOMAIN_KEYWORDS, {"test_domain": ["keyword_1"]}):
+            tokens = set()
+            result = parser.matched_domain_keywords(tokens, "test_domain")
+            assert result == []
+
+    def test_normalization_matching(self, parser):
+        # The function normalizes the keyword before checking if it's in the tokens.
+        # So "Weird-K.e.y" becomes "weirdkey". If "weirdkey" is in tokens, it matches.
+        with patch.dict(parser.SURVEY_DOMAIN_KEYWORDS, {"test_domain": ["Weird-K.e.y"]}):
+            tokens = {"weirdkey"}
+            result = parser.matched_domain_keywords(tokens, "test_domain")
+            assert result == ["Weird-K.e.y"]
