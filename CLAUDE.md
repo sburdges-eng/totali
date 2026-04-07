@@ -8,6 +8,15 @@ TOTaLi is a **defensible spatial drafting pipeline** for civil engineering and l
 
 Core doctrine: no geometry is ever auto-promoted to certified status. Every AI suggestion lands on a DRAFT layer and must be accepted/rejected by a licensed surveyor.
 
+## Canonical root
+
+The canonical pipeline code lives in `TOTaLi/totali/` (geodetic, segmentation, extraction, cad_shielding, linting, audit, pipeline phases).
+
+Non-canonical copies that must be resolved:
+
+- `{pipeline,geodetic,...}/totali/` — a literally brace-named directory containing a different module set (orchestration, RAG, agents, training). This is consolidation debt; do not develop here. Its content is mirrored in `workspace-scaffold/apps/totali/`.
+- `workspace-scaffold/apps/totali/` — the monorepo destination for orchestration/RAG/agent modules per `workspace-scaffold/docs/migration_manifest.yaml`. Use this path for orchestration work until the brace-dir is deleted.
+
 ## Directory structure
 
 ```
