@@ -20,9 +20,7 @@
 - /Users/seanburdges/Dev/survey-automation-roadmap/src/survey_automation/pipeline.py
 - /Users/seanburdges/Dev/survey-automation-roadmap/src/survey_automation/detection.py
 - /Users/seanburdges/Dev/survey-automation-roadmap/README.md
-- /Users/seanburdges/Dev/jepa-audio-enclosure-ai/apps/api/src/services/cad_orchestrator.py
-- /Users/seanburdges/Dev/jepa-audio-enclosure-ai/docs/carlson_macro_spec.md
-- /Users/seanburdges/Dev/jepa-audio-enclosure-ai/docs/system_spec_v1.md
+- /Users/seanburdges/Dev/SubWooder (enclosure/JEPA: automotive-soundsystem, apps) — cad_orchestrator, carlson_macro_spec, system_spec_v1 when present
 
 ## CAD Data Inventory (deduped current snapshot)
 - Total CAD files (cleaned): 77
@@ -38,19 +36,19 @@
 
 ## Top Data Locations
   -   12 /Users/seanburdges/Library/CloudStorage/GoogleDrive-seanblariat@gmail.com
-  -   10 /Users/seanburdges/Dev/jepa-audio-enclosure-ai/runs
+  -   10 /Users/seanburdges/Dev/SubWooder (runs/artifacts when present)
   -    7 /Users/seanburdges/Library/CloudStorage/OneDrive-Personal(2)
   -    6 /Users/seanburdges/Library/Group Containers/UBF8T346G9.OneDriveSyncClientSuite
   -    6 /Users/seanburdges/Library/Group Containers/UBF8T346G9.OneDriveStandaloneSuite
   -    6 /Users/seanburdges/Library/CloudStorage/OneDrive-Personal
   -    4 /Users/seanburdges/Library/CloudStorage/GoogleDrive-sburdges@gmail.com
   -    4 /Users/seanburdges/Dev/survey-automation-roadmap/.local-datasets
-  -    4 /Users/seanburdges/Dev/jepa-audio-enclosure-ai/tests
+  -    4 /Users/seanburdges/Dev/SubWooder (tests when present)
   -    3 /Users/seanburdges/RECOVERY_STAGED_2026-02-18/zip_extract/My Mac
   -    3 /Users/seanburdges/Dev/kelly-listening-contract/build-debug
   -    2 /Users/seanburdges/Dev/survey-automation-roadmap/validation
-  -    2 /Users/seanburdges/Dev/automotive-soundsystem/tests
-  -    2 /Users/seanburdges/Dev/automotive-soundsystem/runs
+  -    2 /Users/seanburdges/Dev/SubWooder/automotive-soundsystem/tests
+  -    2 /Users/seanburdges/Dev/SubWooder/automotive-soundsystem/runs
   -    1 /Volumes/KmiDi-external/DevEXTERNAL/_FORENSIC_READONLY_KMIDI/CODE
   -    1 /Users/seanburdges/Downloads/Poncha Meadows2.dwg
   -    1 /Users/seanburdges/Downloads/21053 - WATERLINE PTS CREATION.dwg
@@ -60,24 +58,11 @@
 
 ## Sample CAD Data Files
 - /Users/seanburdges/Desktop/110311 WATER BASE.dwg
-- /Users/seanburdges/Dev/automotive-soundsystem/runs/artifacts/ui_draft/audio-head-draft.obj
-- /Users/seanburdges/Dev/automotive-soundsystem/runs/artifacts/ui_draft/audio-head-draft.stl
-- /Users/seanburdges/Dev/automotive-soundsystem/tests/fixtures/PASS_01_sealed_panels/03_GEOMETRY/meshes/enclosure_inner_cavity.stl
-- /Users/seanburdges/Dev/automotive-soundsystem/tests/fixtures/PASS_01_sealed_panels/03_GEOMETRY/meshes/enclosure_outer.stl
-- /Users/seanburdges/Dev/jepa-audio-enclosure-ai/runs/artifacts/ui_draft/audio-head-draft.obj
-- /Users/seanburdges/Dev/jepa-audio-enclosure-ai/runs/artifacts/ui_draft/audio-head-draft.stl
-- /Users/seanburdges/Dev/jepa-audio-enclosure-ai/runs/artifacts/ui_draft/ui-debug-check.obj
-- /Users/seanburdges/Dev/jepa-audio-enclosure-ai/runs/artifacts/ui_draft/ui-debug-check.stl
-- /Users/seanburdges/Dev/jepa-audio-enclosure-ai/runs/artifacts/ui_draft/ui-logic-check.obj
-- /Users/seanburdges/Dev/jepa-audio-enclosure-ai/runs/artifacts/ui_draft/ui-logic-check.stl
-- /Users/seanburdges/Dev/jepa-audio-enclosure-ai/runs/artifacts/ui_draft/ui-negative-check.obj
-- /Users/seanburdges/Dev/jepa-audio-enclosure-ai/runs/artifacts/ui_draft/ui-negative-check.stl
-- /Users/seanburdges/Dev/jepa-audio-enclosure-ai/runs/artifacts/ui_draft/ui-random-draft.obj
-- /Users/seanburdges/Dev/jepa-audio-enclosure-ai/runs/artifacts/ui_draft/ui-random-draft.stl
-- /Users/seanburdges/Dev/jepa-audio-enclosure-ai/tests/fixtures/PASS_01_mesh_consistent/03_GEOMETRY/meshes/enclosure_inner_cavity.stl
-- /Users/seanburdges/Dev/jepa-audio-enclosure-ai/tests/fixtures/PASS_01_mesh_consistent/03_GEOMETRY/meshes/enclosure_outer.stl
-- /Users/seanburdges/Dev/jepa-audio-enclosure-ai/tests/fixtures/PASS_01_sealed_panels/03_GEOMETRY/meshes/enclosure_inner_cavity.stl
-- /Users/seanburdges/Dev/jepa-audio-enclosure-ai/tests/fixtures/PASS_01_sealed_panels/03_GEOMETRY/meshes/enclosure_outer.stl
+- /Users/seanburdges/Dev/SubWooder/automotive-soundsystem/runs/artifacts/ui_draft/audio-head-draft.obj
+- /Users/seanburdges/Dev/SubWooder/automotive-soundsystem/runs/artifacts/ui_draft/audio-head-draft.stl
+- /Users/seanburdges/Dev/SubWooder/automotive-soundsystem/tests/fixtures/PASS_01_sealed_panels/03_GEOMETRY/meshes/enclosure_inner_cavity.stl
+- /Users/seanburdges/Dev/SubWooder/automotive-soundsystem/tests/fixtures/PASS_01_sealed_panels/03_GEOMETRY/meshes/enclosure_outer.stl
+- (Enclosure/JEPA runs and tests under Dev/SubWooder when present)
 - /Users/seanburdges/Dev/kelly-listening-contract/build-debug/_deps/juce-src/examples/Assets/teapot.obj
 - /Users/seanburdges/Dev/kelly-listening-contract/build-debug/_deps/juce-src/examples/DemoRunner/Builds/Android/app/src/main/assets/teapot.obj
 - /Users/seanburdges/Dev/kelly-listening-contract/build-debug/_deps/juce-src/extras/AudioPluginHost/Builds/Android/app/src/main/assets/teapot.obj

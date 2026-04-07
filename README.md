@@ -41,3 +41,9 @@ AI output → DRAFT layer only → Human review → Accept/Reject → Certified 
 ```
 
 No geometry is ever auto-promoted to certified status.
+
+## Related
+
+- **Dev/workspace-scaffold** — Monorepo app (apps/totali).
+- **Dev/datasets** — Geospatial/CAD data.
+- **Dev/skills/dwg-tool-parser** — DWG/DXF parsing stub.
