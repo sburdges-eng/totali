@@ -9,8 +9,11 @@ Read order for any agent starting work:
 1. `CLAUDE.md` (project doctrine)
 2. `AGENTS.md` (cross-tool rules)
 3. This document
-4. The `AGENTIC.md` for the specific module being touched
-5. `Docs/CXX_AGENTIC_RULES.md` if any C/C++ is involved
+4. `Docs/PRODUCTION_DESIGN_REFERENCE.md` (north-star architecture; TOTaLi is the
+   surveying-pipeline slice of this design)
+5. `Docs/TOTALI_MAPPING_TO_PRODUCTION_DESIGN.md` (what's in/out/partial in TOTaLi)
+6. The `AGENTIC.md` for the specific module being touched
+7. `Docs/CXX_AGENTIC_RULES.md` if any C/C++ is involved
 
 ---
 
