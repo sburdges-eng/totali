@@ -15,6 +15,7 @@ PRODUCTION_MODULES = [
     "totali",
     "totali.audit.logger",
     "totali.audit.verify",
+    "totali.models.loader",
     "totali.geodetic.gatekeeper",
     "totali.geodetic.crs_inference",
     "totali.segmentation.classifier",
