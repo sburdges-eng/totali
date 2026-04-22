@@ -484,20 +484,16 @@ class TestErrorPropagation:
         assert "segment" not in phase_names
 
     def test_no_auto_promote_even_on_success(self, tmp_path, audit, fake_input):
-        """Even a fully successful run must NOT auto-promote any items."""
-        orch = _make_orchestrator(
-            tmp_path, audit,
-            config_overrides={"linting": {"auto_promote": True, "require_pls_signature": True}},
-        )
-        mock_las = _fake_las_data()
+        """L-4 hardening: config with auto_promote=true is rejected at construction,
+        so the orchestrator never instantiates and never promotes. Stronger guard
+        than the prior behavior (silent override)."""
+        from totali.linting.surveyor_lint import AutoPromoteForbidden
 
-        with patch("totali.geodetic.gatekeeper.laspy.read", return_value=mock_las):
-            result = orch.run(fake_input)
-
-        lint_data = result.phases[-1].data
-        for item in lint_data.get("lint_items", []):
-            assert item.status == GeometryStatus.DRAFT, \
-                f"Item {item.item_id} was promoted to {item.status} — auto_promote must be hardcoded False"
+        with pytest.raises(AutoPromoteForbidden):
+            _make_orchestrator(
+                tmp_path, audit,
+                config_overrides={"linting": {"auto_promote": True, "require_pls_signature": True}},
+            )
 
 
 # ===================================================================

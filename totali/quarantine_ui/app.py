@@ -14,6 +14,24 @@ app = Flask(__name__)
 # In-memory queue for local review workflows.
 QUARANTINE_QUEUE: dict[str, dict] = {}
 
+# Q-4 audit emission: orchestration code injects an AuditLogger via
+# `set_audit_logger()` before the UI serves requests. When set, every resolve
+# /reject emits a structured crs_resolved / crs_rejected_by_operator event
+# with operator identity + item_id + decision. When unset (bare development
+# bring-up), resolves still work but no audit is written — tests cover both.
+_AUDIT_LOGGER = None
+
+
+def set_audit_logger(logger) -> None:
+    """Inject an AuditLogger. Pass None to clear (test-only)."""
+    global _AUDIT_LOGGER
+    _AUDIT_LOGGER = logger
+
+
+def _emit(event: str, data: dict) -> None:
+    if _AUDIT_LOGGER is not None:
+        _AUDIT_LOGGER.log(event, data)
+
 HTML_TEMPLATE = """
 <!DOCTYPE html>
 <html>
@@ -147,6 +165,7 @@ def resolve():
         return jsonify({"success": False, "error": "Item not found"})
 
     item = QUARANTINE_QUEUE.pop(item_id)
+    operator = data.get("operator", "unknown")
     if action == "confirm":
         epsg = int(data.get("epsg"))
         resolution_path = Path(item["output_dir"]) / f"{item_id}_crs_resolution.json"
@@ -157,12 +176,30 @@ def resolve():
                     "resolved_epsg": epsg,
                     "action": "confirmed",
                     "source": "human_review",
+                    "operator": operator,
                 },
                 handle,
                 indent=2,
             )
+        _emit(
+            "crs_resolved",
+            {
+                "item_id": item_id,
+                "filename": item.get("filename"),
+                "resolved_epsg": epsg,
+                "operator": operator,
+            },
+        )
         return jsonify({"success": True, "epsg": epsg})
     if action == "reject":
+        _emit(
+            "crs_rejected_by_operator",
+            {
+                "item_id": item_id,
+                "filename": item.get("filename"),
+                "operator": operator,
+            },
+        )
         return jsonify({"success": True, "action": "rejected"})
     return jsonify({"success": False, "error": "Unknown action"})
 

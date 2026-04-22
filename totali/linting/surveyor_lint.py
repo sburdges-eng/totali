@@ -18,9 +18,24 @@ from totali.pipeline.context import PipelineContext
 from totali.audit.logger import AuditLogger
 
 
+class AutoPromoteForbidden(ValueError):
+    """Raised when config tries to set auto_promote=True. TOTaLi §1.1 invariant."""
+
+
 class SurveyorLinter(PipelinePhase):
     def __init__(self, config: dict, audit: AuditLogger):
         super().__init__(config, audit)
+        # L-4 hard rejection: config may not request auto_promote=true.
+        # Previously we silently overrode to False, which hid operator mistakes.
+        # Now the phase refuses to construct at all, forcing the config to be
+        # fixed before any pipeline run. This is a §1.1 TOTaLi invariant.
+        declared = config.get("auto_promote", False)
+        if declared is not False:
+            raise AutoPromoteForbidden(
+                f"auto_promote={declared!r} is not allowed. TOTaLi §1.1 invariant: "
+                "AI/algorithmic output lands on DRAFT layers only; promotion is a "
+                "human-driven step. Remove or set to false in config."
+            )
         self.ghost_opacity = config.get("ghost_opacity", 0.4)
         self.flag_colors = config.get("flag_colors", {})
         self.auto_promote = False  # HARDCODED FALSE – never auto-promote

@@ -31,11 +31,13 @@ class TestAutoPromoteGuard:
         assert linter.auto_promote is False
 
     @pytest.mark.parametrize("truthy", [True, "true", "yes", 1, "1"])
-    def test_config_truthy_ignored(self, _mk, truthy):
-        linter = _mk({"auto_promote": truthy})
-        assert linter.auto_promote is False, (
-            f"auto_promote must remain False when config says {truthy!r}"
-        )
+    def test_config_truthy_rejected(self, _mk, truthy):
+        """L-4 hard rejection: truthy auto_promote raises AutoPromoteForbidden."""
+        from totali.linting.surveyor_lint import AutoPromoteForbidden
+
+        with pytest.raises(AutoPromoteForbidden) as exc:
+            _mk({"auto_promote": truthy})
+        assert "auto_promote" in str(exc.value)
 
     def test_require_pls_default_true(self, _mk):
         linter = _mk({})
