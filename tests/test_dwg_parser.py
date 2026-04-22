@@ -18,7 +18,6 @@ import textwrap
 from importlib.util import module_from_spec, spec_from_file_location
 from pathlib import Path
 from typing import Any
-from unittest.mock import patch
 
 import pytest
 

@@ -9,8 +9,6 @@ from totali.pipeline.models import (
     PhaseResult,
     ExtractionResult,
     ClassificationResult,
-    CRSMetadata,
-    PointCloudStats,
 )
 
 

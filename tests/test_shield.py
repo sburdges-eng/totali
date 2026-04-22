@@ -1,7 +1,6 @@
 """Tests for Phase 4: CADShield."""
 
 import json
-from pathlib import Path
 from unittest.mock import patch
 
 import numpy as np
@@ -16,7 +15,6 @@ from totali.pipeline.models import (
     GeometryStatus,
     CRSMetadata,
     PointCloudStats,
-    ClassificationResult,
 )
 
 
