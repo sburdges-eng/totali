@@ -7,6 +7,7 @@ Supports later disputes and reproducibility verification.
 
 import json
 import hashlib
+import os
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Iterable, Optional
@@ -64,9 +65,36 @@ class AuditLogger:
         record["hash"] = record_hash
         self._prev_hash = record_hash
 
-        # Append to JSONL
+        # Append to JSONL with fsync — the audit log is a defensible legal
+        # record; a record is not "written" until it reaches durable storage.
+        # os.fsync may raise on pseudo-FS (like /tmp on some CI runners); we
+        # tolerate OSError there since the file-level write already succeeded.
         with open(self.log_path, "a") as f:
             f.write(json.dumps(record, default=str) + "\n")
+            f.flush()
+            try:
+                os.fsync(f.fileno())
+            except OSError:  # pragma: no cover - depends on filesystem
+                pass
+
+    def close(self, summary: Optional[dict] = None) -> None:
+        """Write a terminal `run_end` record and ensure the chain is flushed.
+
+        Idempotent: a second close is a no-op. Once closed, `log()` still
+        works (the chain remains valid) — callers that want a strict single
+        terminator should discard the logger after calling `close()`.
+        """
+        if getattr(self, "_closed", False):
+            return
+        self.log(
+            "run_end",
+            {
+                "project_id": self.project_id,
+                "seq_total": self._seq,
+                "summary": summary or {},
+            },
+        )
+        self._closed = True
 
     def verify_chain(self) -> tuple[bool, list]:
         """Verify the integrity of the audit log hash chain."""
