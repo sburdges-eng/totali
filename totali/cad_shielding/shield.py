@@ -7,11 +7,11 @@ All output goes to DRAFT layers only.
 """
 
 import json
+import re
 import uuid
 import itertools
 import hashlib
 from pathlib import Path
-from typing import Optional
 
 import numpy as np
 
@@ -23,17 +23,73 @@ from totali.pipeline.context import PipelineContext
 from totali.audit.logger import AuditLogger
 
 
+# C-3: TOTaLi invariant §1.3 — every emitted layer must end in -DRAFT
+# (TOTaLi-<DISC>-<FEAT>-DRAFT), with TOTaLi-QA-* exempt. Enforced at
+# config load so a typo in pipeline.yaml fails the phase before any DXF.
+_LAYER_NAME_RE = re.compile(
+    r"^TOTaLi-[A-Z0-9]+(?:-[A-Z0-9_]+)+-DRAFT$|^TOTaLi-QA-[A-Z0-9_-]+$"
+)
+
+
+class NonConformingLayerName(ValueError):
+    """C-3: layer_mapping contains a non-conforming layer name."""
+
+
+class UnsupportedCADFormat(ValueError):
+    """C-4: cad_shielding.format is not yet implemented (dwg stub / dgn deferred)."""
+
+
+# C-4: format → status. Single source of truth; flip "dwg" to "supported"
+# in one place when the dwg-tool-parser writer lands.
+_FORMAT_STATUS: dict[str, str] = {
+    "dxf": "supported",
+    "dwg": "stub",
+    "dgn": "deferred",
+}
+
+
 class CADShield(PipelinePhase):
     def __init__(self, config: dict, audit: AuditLogger):
         super().__init__(config, audit)
-        self.format = config.get("format", "dxf")
+        self.format = str(config.get("format", "dxf")).lower()
         self.healing_cfg = config.get("geometry_healing", {})
         self.layer_map = config.get("layer_mapping", {})
         self.timeout = config.get("middleware_timeout_sec", 30)
         self.max_retry = config.get("max_retry", 3)
 
+        # C-4 then C-3: fail fast on misconfigured deployment.
+        self._validate_format(self.format)
+        self._validate_layer_mapping(self.layer_map)
+
         self._id_prefix = uuid.uuid4().hex[:6]
         self._id_counter = itertools.count()
+
+    @staticmethod
+    def _validate_format(fmt: str) -> None:
+        """C-4: reject non-DXF formats at construction."""
+        status = _FORMAT_STATUS.get(fmt)
+        if status is None:
+            raise ValueError(
+                f"cad_shielding.format={fmt!r} is not recognised. "
+                f"Allowed: {sorted(_FORMAT_STATUS)}"
+            )
+        if status == "supported":
+            return
+        raise UnsupportedCADFormat(
+            f"cad_shielding.format={fmt!r} is {status!r}. "
+            f"Only 'dxf' is currently implemented."
+        )
+
+    @staticmethod
+    def _validate_layer_mapping(mapping: dict) -> None:
+        """C-3: reject non-conforming layer names at config load."""
+        bad = [v for v in mapping.values() if not _LAYER_NAME_RE.match(v)]
+        if bad:
+            raise NonConformingLayerName(
+                f"layer_mapping contains non-conforming names: {bad}. "
+                f"Required: TOTaLi-<DISC>-<FEAT>-DRAFT (or TOTaLi-QA-*). "
+                f"TOTaLi §1.3 invariant — fix the config, do not exempt."
+            )
 
     def validate_inputs(self, context: PipelineContext) -> tuple[bool, list[str]]:
         errors: list[str] = []
@@ -171,7 +227,7 @@ class CADShield(PipelinePhase):
     def _write_dxf(self, extraction: ExtractionResult, path: Path, context: PipelineContext = None) -> dict:
         """Write extraction results to DXF with proper layer mapping."""
         try:
-            import ezdxf
+            import ezdxf  # noqa: F401 — availability probe
             return self._write_dxf_ezdxf(extraction, path, context)
         except ImportError:
             return self._write_dxf_manual(extraction, path, context)

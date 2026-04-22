@@ -1,7 +1,5 @@
 """Tests for Phase 5: SurveyorLinter."""
 
-from datetime import datetime
-from pathlib import Path
 
 import numpy as np
 import pytest
@@ -14,9 +12,6 @@ from totali.pipeline.models import (
     GeometryStatus,
     OcclusionType,
     ExtractionResult,
-    ClassificationResult,
-    CRSMetadata,
-    PointCloudStats,
 )
 
 
@@ -45,8 +40,11 @@ class TestAutoPromoteHardcoded:
         assert linter.auto_promote is False
 
     def test_config_cannot_enable_auto_promote(self, audit_logger):
-        linter = SurveyorLinter({"auto_promote": True}, audit_logger)
-        assert linter.auto_promote is False
+        """L-4 hardening: truthy auto_promote now raises at construction."""
+        from totali.linting.surveyor_lint import AutoPromoteForbidden
+        import pytest as _pytest
+        with _pytest.raises(AutoPromoteForbidden):
+            SurveyorLinter({"auto_promote": True}, audit_logger)
 
 
 class TestValidateInputs:

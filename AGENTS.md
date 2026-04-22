@@ -41,3 +41,11 @@ This installs `pytest`, `scipy`, and `pydantic` explicitly, then installs the ro
 - CI (`.github/workflows/ci.yml`) uses Python 3.11; the Cloud VM has Python 3.12 which is compatible.
 - All totali tests are fully mocked — no real LAS files or ONNX models needed. See `tests/conftest.py`.
 - The copilot instructions at `.github/copilot-instructions.md` contain authoritative guidance on the codebase structure, key files, and the critical `auto_promote = false` invariant.
+
+## Agentic completion protocol
+
+For fully agentic / autonomous work, follow `AGENTIC_COMPLETION_PLAN.md` (top-level wire) and the target module's `AGENTIC.md`. Read order per session: `AGENTIC_COMPLETION_PLAN.md` → `<module>/AGENTIC.md` → its Plan steps → tests → gates.
+
+One `AGENTIC.md` exists per module under `totali/`, per tooling dir (`tests/`, `tools/`, `skills/`), and per sibling subproject (`survey-automation-roadmap/`, `AUTOMATICCAD/`, `laser-suite/`, `dwg-tool-parser/`, `totali-baton/`, `groundtruthos-data/`, `data-reroute/`).
+
+Any C/C++ edit (in `dwg-tool-parser/`, auracad bridge, FFI surface, or vendored native deps) must follow `Docs/CXX_AGENTIC_RULES.md` — dangers, hard rules, sanitizer-backed workflows, debug strategies, review practices, pre-merge checklist. Read it before editing; propose amendments via PR, do not silently exempt.

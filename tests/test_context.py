@@ -1,22 +1,12 @@
 """Tests for PipelineContext and config Pydantic models."""
 
 import numpy as np
-import pytest
-from pydantic import ValidationError
 
 from totali.pipeline.context import (
     AuditConfig,
     PipelineConfig,
     PipelineContext,
     ProjectConfig,
-)
-from totali.pipeline.models import (
-    CRSMetadata,
-    ClassificationResult,
-    ExtractionResult,
-    HealingReport,
-    LintItem,
-    PointCloudStats,
 )
 
 
