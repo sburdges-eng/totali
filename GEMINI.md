@@ -79,3 +79,21 @@ pytest -k "test_crs"            # By name
 - All AI/ML output is non-authoritative — must be reviewed and accepted by a human before promotion.
 - Do not modify `audit_logs/` entries retroactively.
 - DWG/DXF writes always go through the CAD shielding middleware — never write directly to certified layers.
+
+## Agentic completion plan
+
+`AGENTIC_COMPLETION_PLAN.md` at repo root is the top-level wire for fully agentic
+completion: dependency order, global rules, global gates, the outer-loop workflow,
+pre-merge checklist, and project-level Definition of Done. Per-module plans live in
+`AGENTIC.md` files under each module and sibling subproject
+(`totali/<module>/`, `tests/`, `tools/`, `skills/`, `survey-automation-roadmap/`,
+`AUTOMATICCAD/`, `laser-suite/`, `dwg-tool-parser/`, `totali-baton/`,
+`groundtruthos-data/`, `data-reroute/`). Read order per session:
+`AGENTIC_COMPLETION_PLAN.md` → target `AGENTIC.md` → its Plan → its tests → its gates.
+
+## C++ rules
+
+Any C/C++ edit — in `dwg-tool-parser/`, the auracad bridge, FFI surfaces, or vendored
+native deps (PROJ/GDAL/PDAL/OpenCASCADE/LibreDWG) — must follow `Docs/CXX_AGENTIC_RULES.md`.
+That doc is authoritative for dangers, hard rules, workflows, sanitizer-backed debug
+strategies, review practices, and the pre-merge checklist. Read before editing.

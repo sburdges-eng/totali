@@ -108,6 +108,39 @@ All DRAFT layers follow `TOTaLi-<DISCIPLINE>-<FEATURE>-DRAFT`. Example:
 - DWG/DXF writes always go through the CAD shielding middleware — never write directly to certified layers.
 - CRS changes require re-running the geodetic phase from scratch.
 
+## Agentic completion plan (mandatory for autonomous / agentic work)
+
+The project is instrumented for fully agentic completion. Read before starting work:
+
+- `AGENTIC_COMPLETION_PLAN.md` — top-level wire (dependency order, global rules,
+  global gates, agentic outer-loop workflow, pre-merge checklist, completion ledger,
+  project-level Definition of Done, escalation protocol).
+- `<module>/AGENTIC.md` — per-module plan, rules, gates, tests, DoD. One per module:
+  - Core: `totali/pipeline/`, `totali/geodetic/`, `totali/segmentation/`,
+    `totali/extraction/`, `totali/cad_shielding/`, `totali/linting/`, `totali/audit/`,
+    `totali/agents/`, `totali/models/`, `totali/quarantine_ui/`, `totali/repl/`
+  - Tooling: `tests/`, `tools/`, `skills/`
+  - Siblings: `survey-automation-roadmap/`, `AUTOMATICCAD/`, `laser-suite/`,
+    `dwg-tool-parser/`, `totali-baton/`, `groundtruthos-data/`, `data-reroute/`
+
+Start every work session with: AGENTIC_COMPLETION_PLAN.md → the target module's AGENTIC.md
+→ its Plan step → its tests → its gates. Never skip the order.
+
+## C++ rules (mandatory for any C/C++ edit)
+
+Any C/C++ change in `dwg-tool-parser/`, the auracad bridge, FFI surfaces, or vendored
+native deps (PROJ/GDAL/PDAL/OpenCASCADE/LibreDWG) must follow `Docs/CXX_AGENTIC_RULES.md`.
+That document is the source of truth for:
+
+- Dangers (silent correctness, FFI, agentic-loop, security classes)
+- Hard rules (sanitizer coverage, FFI discipline, no `-ffast-math`, deletion review, destructive-op policy)
+- Per-edit / refactor / FFI workflows
+- Sanitizer matrix (ASAN / UBSAN / TSAN / MSAN / LSAN / CFI) and debug strategies
+- Review practices and audit-integrity rules for C++-emitted events
+- Pre-merge checklist
+
+Read it before editing. Do not weaken a rule without amending that doc first.
+
 ## Shared agentic infrastructure
 
 Shared agents, hooks, and skills live in `workspace-scaffold/`:
