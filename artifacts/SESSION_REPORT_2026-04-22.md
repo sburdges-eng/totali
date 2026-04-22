@@ -3,7 +3,27 @@
 Two continuous autonomous turns (user kicked with "begin" then "continue" under
 auto mode, no further input).
 
-## Headline numbers
+## Headline numbers (updated turn-4..7, branch `agentic/continuation-2026-04-22`)
+
+- **Test suite:** 317 passed / 51 failed → **599 passed / 1 skipped / 0 failed**
+  (+282 tests vs baseline; +91 since first checkpoint)
+- **Commits on branch:** 8 new (substrate, invariants, tests, ledger, §11
+  authorization, S/C/Q/G/E tests, models loader, audit fsync+close, REPL tree)
+- **Ruff:** clean across `totali/` + `tests/`
+
+### Turn-4..7 addendum (continued under §11 authorization)
+
+- **S-3, S-2-partial, C-2, Q-5-partial, G-4-partial, E-6:** +48 tests
+- **M-1, M-3-partial:** new `totali/models/loader.py` (ONNX loader + sha256 +
+  manifest validation) + 9 loader tests + 10 projection tests (torch-skipped)
+- **A-7-full:** `AuditLogger.close()` emitting `run_end` + fsync on every
+  write + 8 tests
+- **R-1:** 23 tests on `totali.repl.contracts` (schema version, absolute-path,
+  traversal, metadata scalars)
+- **Repo hygiene:** committed previously-untracked `totali/repl/*` so the
+  branch is self-contained on fresh clone.
+
+## Headline numbers (original turn-1..3)
 
 - **Test suite:** 317 passed / 51 failed → **508 passed / 0 failed** (+191 tests, all green)
 - **Ruff:** 42 pre-existing warnings + 2 introduced this session → **0 errors**
