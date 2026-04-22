@@ -4,10 +4,14 @@ Shared fixtures for TOTaLi pipeline tests.
 
 import sys
 import types
+from pathlib import Path
 from unittest.mock import MagicMock
 
 import numpy as np
 import pytest
+
+# Absolute path to the committed synthetic survey corpus directory.
+_SURVEY_CORPUS_DIR = Path(__file__).parent / "fixtures" / "survey_corpus"
 
 # ---------------------------------------------------------------------------
 # Stub out heavy optional dependencies that may not be installed in the test
@@ -247,6 +251,65 @@ def sample_classification():
         mean_confidence=float(np.mean(confidences)),
         low_confidence_count=int(np.sum(confidences < 0.75)),
         occluded_count=int(np.sum(occlusion_mask)),
+    )
+
+
+@pytest.fixture(scope="session")
+def survey_corpus_xyz():
+    """Load the committed synthetic survey corpus (.npy, shape (500, 3)).
+
+    Fixture bytes are committed under tests/fixtures/survey_corpus/ so
+    every run on every machine sees the exact same array. Session-scoped
+    because the array is immutable input — there is no reason to reload
+    it per test.
+    """
+    path = _SURVEY_CORPUS_DIR / "synthetic_500pt.npy"
+    arr = np.load(path, allow_pickle=False)
+    # Defensive invariant guards — fail fast if the on-disk fixture was
+    # tampered with.
+    assert arr.shape == (500, 3), f"corpus shape drift: {arr.shape}"
+    assert arr.dtype == np.float64, f"corpus dtype drift: {arr.dtype}"
+    return arr
+
+
+@pytest.fixture(scope="session")
+def survey_corpus_classification(survey_corpus_xyz):
+    """Plausible deterministic ClassificationResult for the corpus.
+
+    Label layout (matches the z-band layering of the .npy fixture):
+      [0:200)  -> 2 (ground)
+      [200:300) -> 3 (low vegetation)
+      [300:400) -> 6 (building)
+      [400:500) -> 5 (high vegetation)
+    Confidences are drawn from a fixed-seed RNG so the fixture is
+    byte-stable across runs.
+    """
+    from totali.pipeline.models import ClassificationResult
+
+    n = len(survey_corpus_xyz)
+    labels = np.zeros(n, dtype=np.int32)
+    labels[:200] = 2
+    labels[200:300] = 3
+    labels[300:400] = 6
+    labels[400:] = 5
+
+    rng = np.random.default_rng(seed=1337)
+    confidences = rng.uniform(0.6, 0.95, n).astype(np.float32)
+    occlusion_mask = np.zeros(n, dtype=bool)
+
+    return ClassificationResult(
+        labels=labels,
+        confidences=confidences,
+        occlusion_mask=occlusion_mask,
+        class_counts={
+            "ground": 200,
+            "low_vegetation": 100,
+            "building": 100,
+            "high_vegetation": 100,
+        },
+        mean_confidence=float(np.mean(confidences)),
+        low_confidence_count=int(np.sum(confidences < 0.75)),
+        occluded_count=0,
     )
 
 
