@@ -1,7 +1,5 @@
 """Tests for Phase 5: SurveyorLinter."""
 
-from datetime import datetime
-from pathlib import Path
 
 import numpy as np
 import pytest
@@ -14,9 +12,6 @@ from totali.pipeline.models import (
     GeometryStatus,
     OcclusionType,
     ExtractionResult,
-    ClassificationResult,
-    CRSMetadata,
-    PointCloudStats,
 )
 
 

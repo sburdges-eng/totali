@@ -4,7 +4,6 @@ import hashlib
 from pathlib import Path
 from unittest.mock import patch, MagicMock
 
-import numpy as np
 import pytest
 
 from totali.geodetic.gatekeeper import GeodeticGatekeeper

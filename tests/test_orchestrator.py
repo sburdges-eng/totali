@@ -1,7 +1,6 @@
 """Tests for PipelineOrchestrator."""
 
-from pathlib import Path
-from unittest.mock import patch, MagicMock
+from unittest.mock import MagicMock
 
 import numpy as np
 import pytest
@@ -51,8 +50,7 @@ class TestSinglePhaseExecution:
 class TestContextPassing:
     def test_context_accumulates_data_across_phases(self, audit_logger, sample_config, tmp_output):
         """Verify that data from one phase's PhaseResult is merged into context for the next."""
-        orch = PipelineOrchestrator(sample_config, audit_logger, tmp_output)
-
+        # Direct test of context merge — orchestrator instantiation not required here.
         fake_result = PhaseResult(
             phase="geodetic", success=True, message="ok",
             data={"points_xyz": np.zeros((10, 3)), "input_hash": "test"},
