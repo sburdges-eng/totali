@@ -122,6 +122,7 @@ audit:
     - "lint_complete"
     - "accept"
     - "reject"
+    - "defer"  # L-5: surveyor deferred review to next session
     - "promote"
     - "promote_blocked"
     - "certify"

@@ -15,6 +15,7 @@ class GeometryStatus(str, Enum):
     FLAGGED = "FLAGGED"
     ACCEPTED = "ACCEPTED"
     REJECTED = "REJECTED"
+    DEFERRED = "DEFERRED"  # L-5: surveyor deferred review to next session
     CERTIFIED = "CERTIFIED"
 
 
