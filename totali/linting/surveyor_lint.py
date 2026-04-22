@@ -280,18 +280,42 @@ class SurveyorLinter(PipelinePhase):
         })
 
     @staticmethod
+    def defer_item(item: LintItem, reviewer: str, audit: AuditLogger, notes: str = ""):
+        """L-5: defer review to a later session. Item stays on the -DRAFT layer
+        and surfaces again next session. Distinct from accept/reject — operator
+        wants more info or is uncertain. Never silently drops.
+        """
+        item.status = GeometryStatus.DEFERRED
+        item.reviewer = reviewer
+        item.review_timestamp = datetime.now(timezone.utc).isoformat()
+        item.notes = notes
+        audit.log("defer", {
+            "item_id": item.item_id,
+            "reviewer": reviewer,
+            "reason": notes,
+            "timestamp": item.review_timestamp,
+            "remains_on_layer": item.layer,
+        })
+
+    @staticmethod
     def promote_to_certified(
         items: list, pls_name: str, pls_license: str, audit: AuditLogger
     ) -> bool:
         """
         Promote all accepted items to certified status.
-        Requires ALL items to be either ACCEPTED or REJECTED (no DRAFT remaining).
-        Returns False if any items are still in DRAFT status.
+        Requires ALL items to be ACCEPTED or REJECTED. DRAFT and DEFERRED both
+        block promotion (DEFERRED = surveyor explicitly punted to next session;
+        not a decision until they revisit).
+        Returns False if any items are still in DRAFT or DEFERRED status.
         """
         draft_remaining = [i for i in items if i.status == GeometryStatus.DRAFT]
-        if draft_remaining:
+        deferred_remaining = [i for i in items if i.status == GeometryStatus.DEFERRED]
+        if draft_remaining or deferred_remaining:
             audit.log("promote_blocked", {
-                "reason": f"{len(draft_remaining)} items still in DRAFT status",
+                "reason": (
+                    f"{len(draft_remaining)} items still in DRAFT, "
+                    f"{len(deferred_remaining)} items DEFERRED"
+                ),
                 "pls": pls_name,
             })
             return False

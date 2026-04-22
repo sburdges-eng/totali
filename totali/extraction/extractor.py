@@ -8,11 +8,9 @@ Produces measurable error metrics and QA flags.
 
 import json
 from pathlib import Path
-from typing import Optional
 
 import numpy as np
 from scipy.spatial import Delaunay
-from scipy.ndimage import uniform_filter1d
 
 from totali.pipeline.models import (
     PhaseResult, ExtractionResult, ClassificationResult
