@@ -10,7 +10,11 @@ import hashlib
 import os
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Optional
+from typing import Iterable, Optional
+
+
+class UnknownAuditEvent(ValueError):
+    """Raised when emit is attempted with an event not in the configured allowlist (A-5)."""
 
 
 class AuditLogger:
@@ -19,6 +23,7 @@ class AuditLogger:
         log_dir: str = "audit_logs",
         project_id: str = "unknown",
         hash_algo: str = "sha256",
+        allowed_events: Optional[Iterable[str]] = None,
     ):
         self.log_dir = Path(log_dir)
         self.log_dir.mkdir(parents=True, exist_ok=True)
@@ -27,9 +32,20 @@ class AuditLogger:
         self.log_path = self.log_dir / f"{project_id}_{datetime.now().strftime('%Y%m%d_%H%M%S')}.jsonl"
         self._prev_hash = "0" * 64  # genesis block
         self._seq = 0
+        # A-5: opt-in event allowlist. None = legacy unrestricted behavior.
+        # When set, log() raises UnknownAuditEvent for events outside the list.
+        self.allowed_events: Optional[frozenset] = (
+            frozenset(allowed_events) if allowed_events is not None else None
+        )
+        self._closed = False
 
     def log(self, event_type: str, data: Optional[dict] = None):
         """Log an auditable event with hash chaining."""
+        if self.allowed_events is not None and event_type not in self.allowed_events:
+            raise UnknownAuditEvent(
+                f"event {event_type!r} is not in allowed_events; "
+                f"declare it in audit.log_events config or remove the emit"
+            )
         self._seq += 1
         timestamp = datetime.now(timezone.utc).isoformat()
 
@@ -48,9 +64,30 @@ class AuditLogger:
         record["hash"] = record_hash
         self._prev_hash = record_hash
 
-        # Append to JSONL
+        # A-7: append + fsync. The audit log is a defensible legal record;
+        # a record isn't "written" until it reaches durable storage.
+        # os.fsync may raise on pseudo-FS; tolerate OSError.
         with open(self.log_path, "a") as f:
             f.write(json.dumps(record, default=str) + "\n")
+            f.flush()
+            try:
+                os.fsync(f.fileno())
+            except OSError:  # pragma: no cover - depends on filesystem
+                pass
+
+    def close(self, summary: Optional[dict] = None) -> None:
+        """A-7: write a terminal `run_end` record. Idempotent."""
+        if self._closed:
+            return
+        self.log(
+            "run_end",
+            {
+                "project_id": self.project_id,
+                "seq_total": self._seq,
+                "summary": summary or {},
+            },
+        )
+        self._closed = True
 
     def verify_chain(self) -> tuple[bool, list]:
         """Verify the integrity of the audit log hash chain."""

@@ -9,7 +9,6 @@ AUTO-PROMOTE IS ALWAYS FALSE. PLS remains sovereign.
 import json
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Optional
 
 from totali.pipeline.models import (
     PhaseResult, GeometryStatus, LintItem, OcclusionType
@@ -19,9 +18,21 @@ from totali.pipeline.context import PipelineContext
 from totali.audit.logger import AuditLogger
 
 
+class AutoPromoteForbidden(ValueError):
+    """L-4: config tried to set auto_promote=True. TOTaLi §1.1 invariant."""
+
+
 class SurveyorLinter(PipelinePhase):
     def __init__(self, config: dict, audit: AuditLogger):
         super().__init__(config, audit)
+        # L-4 hard rejection: config may not request auto_promote=true.
+        declared = config.get("auto_promote", False)
+        if declared is not False:
+            raise AutoPromoteForbidden(
+                f"auto_promote={declared!r} is not allowed. TOTaLi §1.1 invariant: "
+                "AI/algorithmic output lands on DRAFT layers only; promotion is a "
+                "human-driven step. Remove or set to false in config."
+            )
         self.ghost_opacity = config.get("ghost_opacity", 0.4)
         self.flag_colors = config.get("flag_colors", {})
         self.auto_promote = False  # HARDCODED FALSE – never auto-promote
@@ -179,7 +190,7 @@ class SurveyorLinter(PipelinePhase):
             "=" * 72,
             f"Generated: {datetime.now(timezone.utc).isoformat()}",
             f"Total Items for Review: {len(items)}",
-            f"Auto-Promote: DISABLED (PLS certification required)",
+            "Auto-Promote: DISABLED (PLS certification required)",
             "",
             "-" * 72,
             "QA FLAGS",
@@ -213,7 +224,7 @@ class SurveyorLinter(PipelinePhase):
                     f"Layer: {item.layer}  |  Conf: {item.confidence:.1%}  |  "
                     f"Occlusion: {item.occlusion.value}"
                 )
-                lines.append(f"    [ ] ACCEPT   [ ] REJECT   Notes: _______________")
+                lines.append("    [ ] ACCEPT   [ ] REJECT   Notes: _______________")
                 lines.append("")
         else:
             lines.append("  No items flagged for special attention.")

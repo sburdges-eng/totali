@@ -8,7 +8,6 @@ Rejects ambiguous inputs. Applies PROJ-based transformations.
 import hashlib
 import json
 from pathlib import Path
-from typing import Optional
 
 import numpy as np
 import laspy
@@ -26,6 +25,15 @@ from totali.audit.logger import AuditLogger
 class GeodeticGatekeeper(PipelinePhase):
     phase_name = "geodetic"
 
+    # G-3: canonical unit alias sets. Case-insensitive, whitespace-normalized.
+    _US_SURVEY_FOOT_ALIASES = frozenset(
+        {"us_survey_foot", "us survey foot", "ftus", "usft"}
+    )
+    _METRIC_ALIASES = frozenset({"meter", "metre", "m", "meters", "metres"})
+    _INTERNATIONAL_FOOT_ALIASES = frozenset(
+        {"foot", "feet", "ft", "international_foot"}
+    )
+
     def __init__(self, config: dict, audit: AuditLogger):
         super().__init__(config, audit)
         self.allowed_crs = [CRS.from_user_input(c) for c in config.get("allowed_crs", [])]
@@ -33,6 +41,9 @@ class GeodeticGatekeeper(PipelinePhase):
         self.reject_mixed_datum = config.get("reject_on_mixed_datum", True)
         self.reject_missing_crs = config.get("reject_on_missing_crs", True)
         self.geoid_model = config.get("geoid_model", "GEOID18")
+        # G-3: tolerance carried into unit_rejected audit payloads for
+        # downstream elevation-precision checks.
+        self.unit_tolerance_ft = float(config.get("unit_tolerance_ft", 0.01))
 
     def validate_inputs(self, context: PipelineContext) -> tuple[bool, list[str]]:
         errors: list[str] = []
@@ -162,10 +173,102 @@ class GeodeticGatekeeper(PipelinePhase):
         meta.horizontal_unit = self.config.get("elevation_unit", "US_survey_foot")
         meta.vertical_unit = self.config.get("elevation_unit", "US_survey_foot")
         meta.epoch = self.config.get("required_epoch")
+
+        # G-3: unit validation after defaults. Categorical — no silent coercion.
+        errors.extend(self._validate_units(meta, path))
+
         meta.validation_errors = errors
         meta.is_valid = len(errors) == 0
 
         return meta
+
+    @staticmethod
+    def _normalize_unit(unit):
+        return (unit or "").strip().lower()
+
+    def _validate_units(self, crs: CRSMetadata, path: Path) -> list[str]:
+        """G-3: US-survey-foot categorical enforcement. No silent coercion.
+
+        Metric → `_reject_metric` (reason=metric_not_allowed).
+        Non-canonical label → `unit_rejected` (reason=unit_mismatch).
+        Pass → `unit_validated`.
+        """
+        errors: list[str] = []
+        canonical = self._normalize_unit(
+            self.config.get("elevation_unit", "US_survey_foot")
+        )
+        h_unit = self._normalize_unit(crs.horizontal_unit)
+        v_unit = self._normalize_unit(crs.vertical_unit)
+
+        if h_unit in self._METRIC_ALIASES or v_unit in self._METRIC_ALIASES:
+            self._reject_metric(path, h_unit, v_unit, canonical)
+            errors.append(
+                f"Metric units declared (horizontal={h_unit or '?'}, "
+                f"vertical={v_unit or '?'}); TOTaLi requires {canonical}. "
+                "Rerun ingestion after unit conversion; no silent reprojection."
+            )
+            return errors
+
+        if canonical in self._US_SURVEY_FOOT_ALIASES:
+            allowed_aliases = self._US_SURVEY_FOOT_ALIASES
+        else:
+            allowed_aliases = frozenset({canonical})
+
+        def _emit_mismatch(axis: str, declared: str) -> None:
+            self.audit.log(
+                "unit_rejected",
+                {
+                    "file": str(path),
+                    "axis": axis,
+                    "declared_unit": declared,
+                    "horizontal_unit": h_unit,
+                    "vertical_unit": v_unit,
+                    "expected_unit": canonical,
+                    "tolerance_ft": self.unit_tolerance_ft,
+                    "reason": "unit_mismatch",
+                },
+            )
+
+        if h_unit and h_unit not in allowed_aliases:
+            _emit_mismatch("horizontal", h_unit)
+            errors.append(
+                f"Horizontal unit {h_unit!r} is not compatible with canonical "
+                f"{canonical!r} (tolerance_ft={self.unit_tolerance_ft})"
+            )
+        if v_unit and v_unit not in allowed_aliases:
+            _emit_mismatch("vertical", v_unit)
+            errors.append(
+                f"Vertical unit {v_unit!r} is not compatible with canonical "
+                f"{canonical!r} (tolerance_ft={self.unit_tolerance_ft})"
+            )
+
+        if not errors:
+            self.audit.log(
+                "unit_validated",
+                {
+                    "file": str(path),
+                    "horizontal_unit": h_unit,
+                    "vertical_unit": v_unit,
+                    "canonical_unit": canonical,
+                    "tolerance_ft": self.unit_tolerance_ft,
+                },
+            )
+
+        return errors
+
+    def _reject_metric(self, path: Path, h_unit: str, v_unit: str, canonical: str) -> None:
+        """G-3: canonical metric-rejection audit event."""
+        self.audit.log(
+            "unit_rejected",
+            {
+                "file": str(path),
+                "horizontal_unit": h_unit,
+                "vertical_unit": v_unit,
+                "expected_unit": canonical,
+                "tolerance_ft": self.unit_tolerance_ft,
+                "reason": "metric_not_allowed",
+            },
+        )
 
     def _compute_stats(
         self, las: laspy.LasData, path: Path, crs: CRSMetadata
