@@ -7,10 +7,13 @@ Supports later disputes and reproducibility verification.
 
 import json
 import hashlib
-import os
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Optional
+from typing import Iterable, Optional
+
+
+class UnknownAuditEvent(ValueError):
+    """Raised when emit is attempted with an event not in the configured allowlist."""
 
 
 class AuditLogger:
@@ -19,6 +22,7 @@ class AuditLogger:
         log_dir: str = "audit_logs",
         project_id: str = "unknown",
         hash_algo: str = "sha256",
+        allowed_events: Optional[Iterable[str]] = None,
     ):
         self.log_dir = Path(log_dir)
         self.log_dir.mkdir(parents=True, exist_ok=True)
@@ -27,9 +31,21 @@ class AuditLogger:
         self.log_path = self.log_dir / f"{project_id}_{datetime.now().strftime('%Y%m%d_%H%M%S')}.jsonl"
         self._prev_hash = "0" * 64  # genesis block
         self._seq = 0
+        # Allowlist enforcement is opt-in (None disables enforcement so existing
+        # callers continue to work). When set, log() raises UnknownAuditEvent
+        # for events outside the allowlist — guards against typo'd events that
+        # would otherwise pollute the chain-of-custody record.
+        self.allowed_events: Optional[frozenset] = (
+            frozenset(allowed_events) if allowed_events is not None else None
+        )
 
     def log(self, event_type: str, data: Optional[dict] = None):
         """Log an auditable event with hash chaining."""
+        if self.allowed_events is not None and event_type not in self.allowed_events:
+            raise UnknownAuditEvent(
+                f"event {event_type!r} is not in allowed_events; "
+                f"declare it in audit.log_events config or remove the emit"
+            )
         self._seq += 1
         timestamp = datetime.now(timezone.utc).isoformat()
 

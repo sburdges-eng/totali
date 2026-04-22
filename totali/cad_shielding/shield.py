@@ -7,10 +7,10 @@ All output goes to DRAFT layers only.
 """
 
 import json
+import re
 import uuid
 import hashlib
 from pathlib import Path
-from typing import Optional
 
 import numpy as np
 
@@ -23,6 +23,17 @@ from totali.audit.logger import AuditLogger
 from totali.cad_shielding.geometry_healer import GeometryHealer, HealingConfig
 
 
+# C-3 invariant guard: every emitted layer must end in -DRAFT, except QA
+# layers which use the TOTaLi-QA-* prefix. Enforced at config load.
+_LAYER_NAME_RE = re.compile(
+    r"^TOTaLi-[A-Z0-9]+(?:-[A-Z0-9_]+)+-DRAFT$|^TOTaLi-QA-[A-Z0-9_-]+$"
+)
+
+
+class NonConformingLayerName(ValueError):
+    """Raised when cad_shielding.layer_mapping carries a non-conforming layer name."""
+
+
 class CADShield(PipelinePhase):
     def __init__(self, config: dict, audit: AuditLogger):
         super().__init__(config, audit)
@@ -31,6 +42,7 @@ class CADShield(PipelinePhase):
         self.layer_map = config.get("layer_mapping", {})
         self.timeout = config.get("middleware_timeout_sec", 30)
         self.max_retry = config.get("max_retry", 3)
+        self._validate_layer_mapping(self.layer_map)
         self.healer = GeometryHealer(
             HealingConfig(
                 close_tolerance=self.healing_cfg.get("close_tolerance", 0.001),
@@ -43,6 +55,23 @@ class CADShield(PipelinePhase):
                 close_polygons=self.healing_cfg.get("close_polygons", True),
             )
         )
+
+    @staticmethod
+    def _validate_layer_mapping(mapping: dict) -> None:
+        """Reject any layer name that does not conform to the DRAFT discipline.
+
+        Pattern: TOTaLi-<DISCIPLINE>-<FEATURE>(-<SUBFEATURE>...)-DRAFT, or
+                 TOTaLi-QA-<NAME> (QA layers do not carry -DRAFT).
+        Failing here means a typo in pipeline.yaml is caught at config load —
+        before any DXF is written.
+        """
+        bad = [v for v in mapping.values() if not _LAYER_NAME_RE.match(v)]
+        if bad:
+            raise NonConformingLayerName(
+                f"layer_mapping contains non-conforming names: {bad}. "
+                f"Required: TOTaLi-<DISC>-<FEAT>-DRAFT (or TOTaLi-QA-*). "
+                f"TOTaLi §1.3 invariant — fix the config, do not exempt."
+            )
 
     def validate_inputs(self, context: PipelineContext) -> tuple[bool, list[str]]:
         errors: list[str] = []

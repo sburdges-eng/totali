@@ -8,7 +8,6 @@ Produces measurable error metrics and QA flags.
 
 import json
 from pathlib import Path
-from typing import Optional
 
 import numpy as np
 from scipy.spatial import Delaunay
@@ -162,7 +161,7 @@ class DeterministicExtractor(PipelinePhase):
                 },
                 output_files=[report_path],
             )
-        except Exception as e:
+        except Exception:
             raise
 
     def _build_dtm(self, ground_pts: np.ndarray) -> tuple:

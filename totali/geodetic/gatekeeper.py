@@ -37,6 +37,14 @@ except Exception:  # pragma: no cover - optional dependency (Flask)
 class GeodeticGatekeeper(PipelinePhase):
     phase_name = "geodetic"
 
+    _US_SURVEY_FOOT_ALIASES = frozenset(
+        {"us_survey_foot", "us survey foot", "ftus", "usft"}
+    )
+    _METRIC_ALIASES = frozenset({"meter", "metre", "m", "meters", "metres"})
+    _INTERNATIONAL_FOOT_ALIASES = frozenset(
+        {"foot", "feet", "ft", "international_foot"}
+    )
+
     def __init__(self, config: dict, audit: AuditLogger):
         super().__init__(config, audit)
         self.allowed_crs = [CRS.from_user_input(c) for c in config.get("allowed_crs", [])]
@@ -45,7 +53,9 @@ class GeodeticGatekeeper(PipelinePhase):
         self.reject_missing_crs = config.get("reject_on_missing_crs", True)
         self.geoid_model = config.get("geoid_model", "GEOID18")
         self.crs_inference_cfg = config.get("crs_inference", {})
-        self.crs_inference_enabled = self.crs_inference_cfg.get("enabled", not self.reject_missing_crs)
+        self.crs_inference_enabled = self.crs_inference_cfg.get(
+            "enabled", not self.reject_missing_crs
+        )
         self.crs_confidence_threshold = float(
             self.crs_inference_cfg.get("confidence_threshold", 0.8)
         )
@@ -55,6 +65,7 @@ class GeodeticGatekeeper(PipelinePhase):
         self.internal_metric_standardization = config.get(
             "internal_metric_standardization", False
         )
+        self.unit_tolerance_ft = float(config.get("unit_tolerance_ft", 0.01))
 
     def validate_inputs(self, context: PipelineContext) -> tuple[bool, list[str]]:
         errors: list[str] = []
@@ -72,7 +83,6 @@ class GeodeticGatekeeper(PipelinePhase):
         input_path = Path(context.input_path)
         output_dir = Path(context.output_dir)
 
-        # Read point cloud
         las = laspy.read(str(input_path))
         if len(las.points) == 0:
             return PhaseResult(
@@ -81,7 +91,6 @@ class GeodeticGatekeeper(PipelinePhase):
                 message="Input point cloud is empty",
             )
 
-        # Extract and validate CRS
         crs_meta = self._extract_crs(las, input_path)
 
         if not crs_meta.is_valid:
@@ -91,10 +100,8 @@ class GeodeticGatekeeper(PipelinePhase):
                 message=f"CRS validation failed: {crs_meta.validation_errors}",
             )
 
-        # Compute stats
         stats = self._compute_stats(las, input_path, crs_meta)
 
-        # Hash input for chain of custody
         input_hash = self._hash_file(input_path)
         self.audit.log("ingest", {
             "file": str(input_path),
@@ -105,7 +112,6 @@ class GeodeticGatekeeper(PipelinePhase):
             "bounds_max": stats.bounds_max.tolist() if stats.bounds_max is not None else None,
         })
 
-        # Transform if needed
         points_xyz, transform_applied = self._apply_transforms(las, crs_meta)
 
         if transform_applied:
@@ -115,11 +121,9 @@ class GeodeticGatekeeper(PipelinePhase):
                 "geoid": self.geoid_model,
             })
 
-        # Write standardized output
         out_path = output_dir / f"{input_path.stem}_gated.las"
         self._write_output(las, points_xyz, out_path, crs_meta)
 
-        # Metadata report
         report_path = output_dir / f"{input_path.stem}_geodetic_report.json"
         report = {
             "input_file": str(input_path),
@@ -160,10 +164,9 @@ class GeodeticGatekeeper(PipelinePhase):
         meta = CRSMetadata(epsg_code=0)
         errors: list[str] = []
 
-        # Try to get CRS from LAS VLRs
         crs_wkt = None
         for vlr in las.vlrs:
-            if vlr.record_id == 2112:  # OGC WKT
+            if vlr.record_id == 2112:
                 crs_wkt = vlr.record_data.decode("utf-8", errors="ignore").strip("\x00")
                 break
 
@@ -178,7 +181,6 @@ class GeodeticGatekeeper(PipelinePhase):
                     errors.append("CRS found but no EPSG code resolvable")
             except CRSError as e:
                 errors.append(f"Invalid CRS WKT: {e}")
-        # Fallback: use laspy header CRS if present
         elif hasattr(las, "header") and hasattr(las.header, "parse_crs"):
             try:
                 crs = las.header.parse_crs()
@@ -197,7 +199,6 @@ class GeodeticGatekeeper(PipelinePhase):
             if self.reject_missing_crs:
                 errors.append("No CRS metadata found in LAS file")
 
-        # Spatial heuristic fallback when metadata is missing/unknown.
         if (
             meta.epsg_code in (None, 0)
             and not self.reject_missing_crs
@@ -251,7 +252,6 @@ class GeodeticGatekeeper(PipelinePhase):
             else:
                 errors.append("No CRS metadata found and inference failed")
 
-        # Validate against allowed list
         if meta.epsg_code and meta.epsg_code not in self.allowed_epsg:
             errors.append(
                 f"EPSG:{meta.epsg_code} not in allowed CRS list: {self.allowed_epsg}"
@@ -269,10 +269,107 @@ class GeodeticGatekeeper(PipelinePhase):
             "elevation_unit", "US_survey_foot"
         )
         meta.epoch = self.config.get("required_epoch")
+
+        # G-3: US survey foot unit validation.
+        errors.extend(self._validate_units(meta, path))
+
         meta.validation_errors = errors
         meta.is_valid = len(errors) == 0
 
         return meta
+
+    @staticmethod
+    def _normalize_unit(unit: Optional[str]) -> str:
+        return (unit or "").strip().lower()
+
+    def _validate_units(self, crs: CRSMetadata, path: Path) -> list[str]:
+        """Categorical unit validation against the configured canonical unit.
+
+        No silent coercion. Metric → `_reject_metric`. Non-canonical label →
+        `unit_rejected` with `reason="unit_mismatch"`. Pass → `unit_validated`.
+        """
+        errors: list[str] = []
+        canonical = self._normalize_unit(
+            self.config.get("elevation_unit", "US_survey_foot")
+        )
+        h_unit = self._normalize_unit(crs.horizontal_unit)
+        v_unit = self._normalize_unit(crs.vertical_unit)
+
+        if h_unit in self._METRIC_ALIASES or v_unit in self._METRIC_ALIASES:
+            self._reject_metric(path, h_unit, v_unit, canonical)
+            errors.append(
+                f"Metric units declared (horizontal={h_unit or '?'}, "
+                f"vertical={v_unit or '?'}); TOTaLi requires {canonical}. "
+                "Rerun ingestion after unit conversion; no silent reprojection."
+            )
+            return errors
+
+        if canonical in self._US_SURVEY_FOOT_ALIASES:
+            allowed_aliases = self._US_SURVEY_FOOT_ALIASES
+        else:
+            allowed_aliases = frozenset({canonical})
+
+        def _emit_mismatch(axis: str, declared: str) -> None:
+            self.audit.log(
+                "unit_rejected",
+                {
+                    "file": str(path),
+                    "axis": axis,
+                    "declared_unit": declared,
+                    "horizontal_unit": h_unit,
+                    "vertical_unit": v_unit,
+                    "expected_unit": canonical,
+                    "tolerance_ft": self.unit_tolerance_ft,
+                    "reason": "unit_mismatch",
+                },
+            )
+
+        if h_unit and h_unit not in allowed_aliases:
+            _emit_mismatch("horizontal", h_unit)
+            errors.append(
+                f"Horizontal unit {h_unit!r} is not compatible with canonical "
+                f"{canonical!r} (tolerance_ft={self.unit_tolerance_ft})"
+            )
+        if v_unit and v_unit not in allowed_aliases:
+            _emit_mismatch("vertical", v_unit)
+            errors.append(
+                f"Vertical unit {v_unit!r} is not compatible with canonical "
+                f"{canonical!r} (tolerance_ft={self.unit_tolerance_ft})"
+            )
+
+        if not errors:
+            self.audit.log(
+                "unit_validated",
+                {
+                    "file": str(path),
+                    "horizontal_unit": h_unit,
+                    "vertical_unit": v_unit,
+                    "canonical_unit": canonical,
+                    "tolerance_ft": self.unit_tolerance_ft,
+                },
+            )
+
+        return errors
+
+    def _reject_metric(
+        self,
+        path: Path,
+        h_unit: str,
+        v_unit: str,
+        canonical: str,
+    ) -> None:
+        """Emit the canonical metric-rejection audit event."""
+        self.audit.log(
+            "unit_rejected",
+            {
+                "file": str(path),
+                "horizontal_unit": h_unit,
+                "vertical_unit": v_unit,
+                "expected_unit": canonical,
+                "tolerance_ft": self.unit_tolerance_ft,
+                "reason": "metric_not_allowed",
+            },
+        )
 
     def _compute_stats(
         self, las: laspy.LasData, path: Path, crs: CRSMetadata
@@ -294,11 +391,9 @@ class GeodeticGatekeeper(PipelinePhase):
     ) -> tuple[np.ndarray, bool]:
         xyz = np.column_stack([las.x, las.y, las.z])
 
-        # If EPSG code is unknown/missing, no transform can be applied
         if not crs.epsg_code:
             return self._standardize_units(xyz, crs), False
 
-        # If CRS matches first allowed CRS, no transform needed
         if crs.epsg_code == self.allowed_epsg[0]:
             return self._standardize_units(xyz, crs), False
 
@@ -307,7 +402,6 @@ class GeodeticGatekeeper(PipelinePhase):
                 "Invalid EPSG code detected (EPSG:0). Please provide a valid CRS."
             )
 
-        # Apply PROJ transformation
         source_crs = CRS.from_epsg(crs.epsg_code)
         target_crs = CRS.from_epsg(self.allowed_epsg[0])
         transformer = Transformer.from_crs(source_crs, target_crs, always_xy=True)
@@ -344,7 +438,6 @@ class GeodeticGatekeeper(PipelinePhase):
         out_las.y = xyz[:, 1]
         out_las.z = xyz[:, 2]
 
-        # Copy classification if present
         if hasattr(las, "classification"):
             out_las.classification = las.classification
         if hasattr(las, "intensity"):

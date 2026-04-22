@@ -5,9 +5,7 @@ Non-authoritative classification. Produces probabilities + confidence, NOT geome
 Uses ONNX runtime for model inference on point cloud batches.
 """
 
-import time
 from pathlib import Path
-from typing import Optional
 
 import numpy as np
 

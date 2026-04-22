@@ -9,7 +9,6 @@ AUTO-PROMOTE IS ALWAYS FALSE. PLS remains sovereign.
 import json
 from datetime import datetime, timezone
 from pathlib import Path
-from typing import Optional
 
 from totali.pipeline.models import (
     PhaseResult, GeometryStatus, LintItem, OcclusionType
@@ -183,7 +182,7 @@ class SurveyorLinter(PipelinePhase):
             "=" * 72,
             f"Generated: {datetime.now(timezone.utc).isoformat()}",
             f"Total Items for Review: {len(items)}",
-            f"Auto-Promote: DISABLED (PLS certification required)",
+            "Auto-Promote: DISABLED (PLS certification required)",
             "",
             "-" * 72,
             "QA FLAGS",
@@ -220,7 +219,7 @@ class SurveyorLinter(PipelinePhase):
                     f"Layer: {item.layer}  |  Conf: {item.confidence:.1%}  |  "
                     f"Occlusion: {item.occlusion.value}"
                 )
-                lines.append(f"    [ ] ACCEPT   [ ] REJECT   Notes: _______________")
+                lines.append("    [ ] ACCEPT   [ ] REJECT   Notes: _______________")
                 lines.append("")
         else:
             lines.append("  No items flagged for special attention.")

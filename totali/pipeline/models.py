@@ -6,7 +6,6 @@ Shared types across all pipeline phases.
 
 from dataclasses import dataclass, field
 from enum import Enum
-from pathlib import Path
 from typing import Optional
 import numpy as np
 
@@ -53,7 +52,13 @@ class PointCloudStats:
 
 @dataclass
 class ClassificationResult:
-    """Per-point classification with confidence scores."""
+    """Per-point classification with confidence scores.
+
+    Always non-authoritative: ML output never promotes to certified geometry.
+    Downstream phases (extraction, linting) read `authoritative` and refuse to
+    treat this as ground truth — the only legal sink is the DRAFT layer + PLS
+    review loop.
+    """
     labels: Optional[np.ndarray] = None         # int array of class IDs
     confidences: Optional[np.ndarray] = None     # float array [0,1]
     occlusion_mask: Optional[np.ndarray] = None  # bool array
@@ -61,6 +66,17 @@ class ClassificationResult:
     mean_confidence: float = 0.0
     low_confidence_count: int = 0
     occluded_count: int = 0
+    # Hard invariant: classifier output is probabilistic, never authoritative.
+    # The default is False; constructors that try to set True will be caught
+    # by the post-init guard below.
+    authoritative: bool = False
+
+    def __post_init__(self):
+        if self.authoritative is not False:
+            raise ValueError(
+                "ClassificationResult.authoritative must be False — "
+                "ML output is never authoritative in TOTaLi (§1.3)."
+            )
 
 
 @dataclass
