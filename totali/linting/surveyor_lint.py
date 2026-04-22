@@ -303,18 +303,17 @@ class SurveyorLinter(PipelinePhase):
     ) -> bool:
         """
         Promote all accepted items to certified status.
-        Requires ALL items to be ACCEPTED or REJECTED. DRAFT and DEFERRED both
-        block promotion (DEFERRED = surveyor explicitly punted to next session;
-        not a decision until they revisit).
-        Returns False if any items are still in DRAFT or DEFERRED status.
+        Requires ALL items to be ACCEPTED or REJECTED. Any other status
+        (DRAFT, DEFERRED, FLAGGED, etc.) blocks promotion.
+        Returns False if any items are not in a terminal review state.
         """
-        draft_remaining = [i for i in items if i.status == GeometryStatus.DRAFT]
-        deferred_remaining = [i for i in items if i.status == GeometryStatus.DEFERRED]
-        if draft_remaining or deferred_remaining:
+        _TERMINAL = {GeometryStatus.ACCEPTED, GeometryStatus.REJECTED}
+        unresolved = [i for i in items if i.status not in _TERMINAL]
+        if unresolved:
             audit.log("promote_blocked", {
                 "reason": (
-                    f"{len(draft_remaining)} items still in DRAFT, "
-                    f"{len(deferred_remaining)} items DEFERRED"
+                    f"{len(unresolved)} items not in terminal state: "
+                    + ", ".join(f"{i.item_id}={i.status.value}" for i in unresolved)
                 ),
                 "pls": pls_name,
             })
