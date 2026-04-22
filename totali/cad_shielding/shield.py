@@ -34,14 +34,33 @@ class NonConformingLayerName(ValueError):
     """Raised when cad_shielding.layer_mapping carries a non-conforming layer name."""
 
 
+class UnsupportedCADFormat(ValueError):
+    """Raised at construction when cad_shielding.format is not yet implemented.
+
+    C-4: DXF is the reference writer. DWG routes through dwg-tool-parser (stub
+    today). DGN is deferred. Failing at __init__ — not at run() — means a
+    misconfigured deployment never starts the pipeline.
+    """
+
+
+# Format → implementation status. Keep this as the single source of truth;
+# when dwg-tool-parser's writer lands, flip "dwg" to "supported" in one place.
+_FORMAT_STATUS: dict[str, str] = {
+    "dxf": "supported",
+    "dwg": "stub",       # dwg-tool-parser bridge not yet wired for writes
+    "dgn": "deferred",   # not on the current roadmap
+}
+
+
 class CADShield(PipelinePhase):
     def __init__(self, config: dict, audit: AuditLogger):
         super().__init__(config, audit)
-        self.format = config.get("format", "dxf")
+        self.format = str(config.get("format", "dxf")).lower()
         self.healing_cfg = config.get("geometry_healing", {})
         self.layer_map = config.get("layer_mapping", {})
         self.timeout = config.get("middleware_timeout_sec", 30)
         self.max_retry = config.get("max_retry", 3)
+        self._validate_format(self.format)
         self._validate_layer_mapping(self.layer_map)
         self.healer = GeometryHealer(
             HealingConfig(
@@ -54,6 +73,28 @@ class CADShield(PipelinePhase):
                 remove_duplicates=self.healing_cfg.get("remove_duplicates", True),
                 close_polygons=self.healing_cfg.get("close_polygons", True),
             )
+        )
+
+    @staticmethod
+    def _validate_format(fmt: str) -> None:
+        """C-4: reject non-DXF CAD formats with a named, actionable error.
+
+        Raises UnsupportedCADFormat for 'dwg' (stub) and 'dgn' (deferred),
+        and ValueError for unknown formats. Caller can handle/escalate —
+        this phase never silently degrades to a wrong format.
+        """
+        status = _FORMAT_STATUS.get(fmt)
+        if status is None:
+            raise ValueError(
+                f"cad_shielding.format={fmt!r} is not recognised. "
+                f"Allowed: {sorted(_FORMAT_STATUS)}"
+            )
+        if status == "supported":
+            return
+        raise UnsupportedCADFormat(
+            f"cad_shielding.format={fmt!r} is {status!r}. "
+            f"Only 'dxf' is currently implemented; {fmt!r} requires additional "
+            f"work (see cad_shielding/AGENTIC.md C-4)."
         )
 
     @staticmethod
