@@ -116,13 +116,38 @@ audit:
   log_format: "jsonl"
   hash_algorithm: "sha256"
   log_events:
+    # Phase 1 (geodetic)
     - "ingest"
     - "transform"
+    - "crs_inferred"
+    - "unit_validated"
+    - "unit_rejected"
+    # Phase 2 (segmentation)
     - "classify"
+    # Phase 3 (extraction)
     - "extract"
+    # Phase 4 (cad_shielding)
     - "heal"
     - "insert"
+    - "dry_run_complete"
+    # Phase 5 (linting)
+    - "lint_complete"
     - "accept"
     - "reject"
     - "promote"
+    - "promote_blocked"
     - "certify"
+    # Pipeline / orchestrator
+    - "pipeline_start"
+    - "pipeline_complete"
+    - "pipeline_error"
+    - "phase_start"
+    - "phase_complete"
+    - "phase_failed"
+    - "phase_exception"
+    - "phase_timeout"
+    # Quarantine UI (Q-4)
+    - "crs_resolved"
+    - "crs_rejected_by_operator"
+    # Audit terminal (A-7)
+    - "run_end"
