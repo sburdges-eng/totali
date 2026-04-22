@@ -182,11 +182,13 @@ class PipelineOrchestrator:
         """
         if timeout is None or timeout <= 0:
             return processor.run(context)
-        with ThreadPoolExecutor(max_workers=1) as ex:
-            future = ex.submit(processor.run, context)
-            try:
-                return future.result(timeout=timeout)
-            except FuturesTimeoutError as e:
-                raise PhaseTimeout(
-                    f"phase did not return within {timeout:.3f}s"
-                ) from e
+        ex = ThreadPoolExecutor(max_workers=1)
+        future = ex.submit(processor.run, context)
+        try:
+            return future.result(timeout=timeout)
+        except FuturesTimeoutError as e:
+            raise PhaseTimeout(
+                f"phase did not return within {timeout:.3f}s"
+            ) from e
+        finally:
+            ex.shutdown(wait=False, cancel_futures=True)
