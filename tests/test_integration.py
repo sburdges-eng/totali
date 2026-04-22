@@ -19,9 +19,7 @@ import pytest
 from totali.pipeline.orchestrator import PipelineOrchestrator, PHASE_ORDER
 from totali.pipeline.models import (
     PipelineResult,
-    PhaseResult,
     GeometryStatus,
-    CRSMetadata,
     ClassificationResult,
     ExtractionResult,
     HealingReport,

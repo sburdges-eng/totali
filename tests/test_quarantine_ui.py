@@ -1,7 +1,6 @@
 """Tests for HITL quarantine UI: add_to_quarantine and resolve API."""
 
 import json
-from pathlib import Path
 
 import pytest
 

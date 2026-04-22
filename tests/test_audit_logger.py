@@ -1,9 +1,7 @@
 """Tests for AuditLogger hash-chaining and verification."""
 
 import json
-from pathlib import Path
 
-import pytest
 
 from totali.audit.logger import AuditLogger
 

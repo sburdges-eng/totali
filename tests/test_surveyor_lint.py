@@ -1,7 +1,5 @@
 """Tests for Phase 5: SurveyorLinter."""
 
-from datetime import datetime
-from pathlib import Path
 
 import numpy as np
 import pytest
@@ -14,9 +12,6 @@ from totali.pipeline.models import (
     GeometryStatus,
     OcclusionType,
     ExtractionResult,
-    ClassificationResult,
-    CRSMetadata,
-    PointCloudStats,
 )
 
 
@@ -329,7 +324,6 @@ class TestNovelEdgeCases:
 
     def test_nan_confidence_serializes_in_report(self, linter, sample_classification):
         """N4: item with float('nan') confidence should not break JSON / report."""
-        import math
         items = [
             LintItem(item_id="a", geometry_type="LINE", layer="L", confidence=float("nan")),
             LintItem(item_id="b", geometry_type="LINE", layer="L", confidence=0.8),

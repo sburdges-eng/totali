@@ -5,8 +5,6 @@ import numpy as np
 from totali.geodetic.crs_inference import (
     CRSInferenceEngine,
     EPSGCandidate,
-    COLORADO_SPCS,
-    US_SURVEY_FOOT_TO_METER,
 )
 
 
