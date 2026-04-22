@@ -203,6 +203,105 @@ TOTaLi is complete when:
 7. Zero P0/P1 defects. Deferred items have written disposition notes.
 8. Release notes and CHANGELOG reflect shipped behavior.
 
+## 11. Continued Completion Protocol (autonomous-iteration authorization)
+
+This section authorizes — under specific, narrow conditions — autonomous git
+commits on long-running `agentic/*` branches so the orchestration loop can
+continue across sessions without re-handshaking each turn.
+
+### 11.1 Branch discipline
+
+- All autonomous work happens on a branch named `agentic/<purpose>-<YYYY-MM-DD>`.
+  Examples: `agentic/continuation-2026-04-22`, `agentic/audit-hardening-2026-05-03`.
+- The agent **never** commits directly to `main` or to any non-`agentic/*` branch.
+- The agent **never** force-pushes, deletes branches, or rewrites published
+  history.
+- The agent **never** pushes to a remote without a fresh per-session human
+  authorization. Local commits on `agentic/*` are durable enough to resume from
+  on the next turn; pushing is a blast-radius operation that needs explicit OK.
+
+### 11.2 Per-commit gates (mandatory before any autonomous commit)
+
+A commit may only be created when **all** of the following are true on the
+current working tree:
+
+1. `pytest -q` exits 0 with no failures and no new skips compared to the last
+   ledger entry's evidence.
+2. `ruff check totali/ tests/` is clean (or, for changes that touch only
+   docs/artifacts, ruff is unchanged from prior state).
+3. `python -c "import yaml; yaml.safe_load(open('config/pipeline.yaml'))"` is OK.
+4. The commit changes files within the **scoped module(s)** described in the
+   active task. Cross-module sweeps require an explicit "INFRA" or "RUFF-CLEANUP"
+   ledger label.
+5. No file under `audit_logs/`, `Datasets/`, or `artifacts/volume_import/` is
+   touched.
+6. No `.env`, key, credential, or token file is staged.
+7. The commit message names the plan step (e.g. `feat(audit): A-5 event allowlist`)
+   and ends with the standard `Co-Authored-By` trailer.
+8. Pre-commit hooks run (no `--no-verify`).
+
+If any gate fails, the agent halts the autonomous loop and surfaces an
+escalation per §10 instead of committing.
+
+### 11.3 Resume protocol (start of every autonomous session)
+
+1. `git branch --show-current` — confirm we are on the expected `agentic/*` branch.
+   If not, halt and escalate.
+2. Read `artifacts/completion_ledger.jsonl` — this is the source of truth for
+   what is done. Do not re-derive from git log.
+3. Read `AGENTIC_ORCHESTRATION.md` Block 6 (`current_generation`) — confirms
+   the active module and plan step.
+4. `python -m pytest -q` — establish a green baseline before any edit. If the
+   baseline is red, **fix the regression first** (no new feature work on a red
+   tree).
+5. Call `select_next_task(state)`:
+   - lowest-ID pending task, not blocked
+   - if none, advance to the next module in `ship_order` whose dependencies are met
+   - if no implementable task remains without external inputs, halt with a
+     final report
+
+### 11.4 Stopping conditions (halt the loop and surface to human)
+
+The agent **must** halt and surface, not auto-continue, when any of these is
+true:
+
+- Three consecutive failed attempts on the same plan step.
+- A proposed change would weaken an invariant in §1.
+- A blocker requires external data (BV_BASE hydration, ONNX weights, Civil 3D
+  Windows env, AUTOMATICCAD operator presence).
+- A blocker requires a destructive op (`git reset --hard`, `git push --force`,
+  worktree/branch deletion, dependency downgrade).
+- The remaining tasks are all blocked by a single architectural decision that
+  needs human judgment (e.g. "should the REPL bridge unify with laser-suite
+  dotnet?").
+- Token / context budget exceeds 80 % of the session window — checkpoint, ledger,
+  halt.
+
+### 11.5 Per-turn evidence record (append to ledger)
+
+Every autonomous commit MUST be paired with a ledger entry written **before**
+the commit:
+
+```jsonl
+{"ts":"<ISO-8601 UTC>","module":"<name>","step":"<plan-step-id>","gates":["pytest_q","ruff_check","..."],"evidence":"<short summary of what passed>","files_touched":["<paths>"]}
+```
+
+The commit message references the ledger entry's step id. The ledger is the
+durable bridge across stateless turns — never edit prior entries; always append.
+
+### 11.6 What "complete" looks like (project-level)
+
+Continued completion stops being meaningful once §9 Definition of Done is
+fully met. At that point the agent's final action is:
+
+1. Write a `artifacts/PROJECT_COMPLETE_<date>.md` summary mapping every §9
+   bullet to evidence.
+2. Append a final `step: PROJECT-COMPLETE` ledger entry.
+3. Halt and request human review for merge to `main`.
+
+The agent does **not** open the PR or merge — that crosses the push/shared-
+state boundary which always requires per-session authorization.
+
 ## 10. Escalation
 
 Agent halts and surfaces to the human when:
