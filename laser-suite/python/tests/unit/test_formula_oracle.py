@@ -224,24 +224,86 @@ def _rpp_allowable(distance_m: float) -> float:
     return _RPP_BASE_M + (_RPP_PPM * 1e-6 * distance_m)
 
 
+def _rpp_bundle_at_distance(distance_m: float) -> CanonicalBundle:
+    """Minimal two-station bundle with station B placed `distance_m` east of A.
+
+    Constructs a self-consistent bundle that satisfies CanonicalBundle's
+    structural requirements so compute_rpp_rows can run without synthesis
+    shortcuts.
+    """
+    return CanonicalBundle(
+        stations=[
+            Station("A", 0.0, 0.0, 0.0, "fixed"),
+            Station("B", distance_m, 0.0, 0.0, "free"),
+        ],
+        observations=[
+            Observation("O1", "A", "B", "distance", max(distance_m, 1e-9), None)
+        ],
+        weights=[WeightRule("distance", 0.01, 0.0)],
+        adjacency=[AdjacencyPair("A", "B")],
+        boundaries=[GeometryRecord("B1", "POLYGON((0 0,1 0,1 1,0 1,0 0))")],
+        improvements=[GeometryRecord("I1", "POLYGON((0 0,1 0,1 1,0 1,0 0))")],
+        easements=[GeometryRecord("E1", "POLYGON((0 0,1 0,1 1,0 1,0 0))")],
+        setbacks=[SetbackRecord("S1", "B1", 1.0)],
+    )
+
+
+# Hand-literal expected values. Deliberately NOT derived from DEFAULT_CONFIG —
+# a bug in laser_suite.rpp._compute_row's allowable formula will fail here.
+# Formula under test: rpp_allowable = 0.02 + 50e-6 * distance_m (metres).
 @pytest.mark.parametrize(
-    ("distance_m", "expected"),
+    ("distance_m", "expected_allowable_m"),
     [
-        (0.0, 0.02),
-        (100.0, 0.02 + 50e-6 * 100.0),
-        (1000.0, 0.02 + 50e-6 * 1000.0),
-        (10_000.0, 0.02 + 50e-6 * 10_000.0),
+        (0.0,       0.02),
+        (100.0,     0.025),         # 0.02 + 50e-6 * 100    = 0.02 + 0.005
+        (1000.0,    0.07),          # 0.02 + 50e-6 * 1000   = 0.02 + 0.05
+        (10_000.0,  0.52),          # 0.02 + 50e-6 * 10000  = 0.02 + 0.5
     ],
 )
-def test_ls3_rpp_allowable_formula_over_distance(distance_m: float, expected: float) -> None:
-    """RPP_allowable = 0.02 + 50e-6 * d — checked at several distances."""
-    result = _rpp_allowable(distance_m)
-    assert result == pytest.approx(expected, abs=1e-12)
+def test_ls3_rpp_allowable_via_compute_rpp_rows(distance_m: float, expected_allowable_m: float) -> None:
+    """Exercise laser_suite.rpp._compute_row allowable branch directly.
+
+    Calls compute_rpp_rows on a minimal two-station bundle and asserts the
+    returned row.rpp_allowable_m matches a HARD-LITERAL expected value.
+    The expected column is not computed from DEFAULT_CONFIG — it is the
+    decimal result of 0.02 + 50e-6 * distance_m, so a regression in either
+    the base constant or the ppm coefficient is caught here.
+    """
+    bundle = _rpp_bundle_at_distance(distance_m)
+    # Trivial non-negative covariance; the actual eigenvalue is irrelevant to
+    # the allowable formula which depends only on distance + config constants.
+    cov = np.zeros((4, 4), dtype=float)
+
+    rows = compute_rpp_rows(
+        bundle=bundle,
+        adjusted_xy={"A": (0.0, 0.0), "B": (distance_m, 0.0)},
+        covariance_xy_full=cov,
+        k95=_K95,
+        allowable_base_m=_RPP_BASE_M,
+        allowable_ppm=_RPP_PPM,
+    )
+    assert len(rows) == 1
+    row = rows[0]
+    assert row.distance_m == pytest.approx(distance_m, abs=1e-12)
+    assert row.rpp_allowable_m == pytest.approx(expected_allowable_m, abs=1e-12)
 
 
 def test_ls3_rpp_allowable_zero_distance_is_constant_floor() -> None:
-    """Zero-distance pair gives exactly the base (0.02 m) with no ppm term."""
-    assert _rpp_allowable(0.0) == 0.02
+    """Zero-distance pair gives exactly 0.02 m via compute_rpp_rows.
+
+    Exercises the production allowable formula (not a test-local helper).
+    """
+    bundle = _rpp_bundle_at_distance(0.0)
+    cov = np.zeros((4, 4), dtype=float)
+    rows = compute_rpp_rows(
+        bundle=bundle,
+        adjusted_xy={"A": (0.0, 0.0), "B": (0.0, 0.0)},
+        covariance_xy_full=cov,
+        k95=_K95,
+        allowable_base_m=_RPP_BASE_M,
+        allowable_ppm=_RPP_PPM,
+    )
+    assert rows[0].rpp_allowable_m == 0.02
 
 
 def test_ls3_pair_covariance_sigma_delta_hand_computed() -> None:
