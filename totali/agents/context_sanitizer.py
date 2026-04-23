@@ -177,7 +177,7 @@ def sanitize_retrieved(text: str) -> tuple[str, list[str]]:
                 pattern_order[p_name],
                 -(p_end - p_start),
             ):
-                merged[-1] = (start, max(end, p_end), name)
+                merged[-1] = (p_start, max(end, p_end), name)
             # else: drop this span.
             continue
         merged.append((start, end, name))
