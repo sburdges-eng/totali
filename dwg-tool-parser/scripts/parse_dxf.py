@@ -110,6 +110,24 @@ def _extract_entity_properties(entity: Any) -> dict[str, Any]:
 # Layer / block counting
 # ---------------------------------------------------------------------------
 
+def _iter_top_level_layouts(doc: Any) -> list[Any]:
+    """Return modelspace and, if present, paperspace layouts.
+
+    ``doc.paperspace()`` raises ``DXFStructureError`` (via
+    ``active_layout()``) when no active paperspace exists, or ``KeyError``
+    when a named paperspace is not found.  Both cases are common in minimal
+    or R12 DXF exports.
+    """
+    import ezdxf  # type: ignore[import-untyped]
+
+    layouts: list[Any] = [doc.modelspace()]
+    try:
+        layouts.append(doc.paperspace())
+    except (KeyError, ezdxf.DXFStructureError):
+        pass
+    return layouts
+
+
 def _count_entities_per_layer(doc: Any) -> dict[str, int]:
     """Count every entity in modelspace + paperspace by its layer name.
 
@@ -118,7 +136,7 @@ def _count_entities_per_layer(doc: Any) -> dict[str, int]:
     layer.
     """
     counts: dict[str, int] = {}
-    for layout in (doc.modelspace(), doc.paperspace()):
+    for layout in _iter_top_level_layouts(doc):
         for entity in layout:
             name = entity.dxf.layer
             counts[name] = counts.get(name, 0) + 1
@@ -148,7 +166,7 @@ def _collect_blocks(doc: Any) -> list[dict[str, Any]]:
 def _collect_entities(doc: Any) -> list[dict[str, Any]]:
     """Top-level entities (modelspace + paperspace, not block contents)."""
     entities: list[dict[str, Any]] = []
-    for layout in (doc.modelspace(), doc.paperspace()):
+    for layout in _iter_top_level_layouts(doc):
         for entity in layout:
             entities.append(
                 {
