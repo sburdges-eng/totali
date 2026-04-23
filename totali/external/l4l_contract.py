@@ -62,7 +62,7 @@ class L4LSceneEmbedding(_NonAuthoritativeBase):
     space: str
     vector_len: int = Field(ge=1)
     model_id: str
-    model_sha256: str = Field(min_length=64, max_length=64)
+    model_sha256: str = Field(min_length=64, max_length=64, pattern=r"^[0-9a-fA-F]{64}$")
 
     @field_validator("space")
     @classmethod
@@ -90,7 +90,7 @@ class L4LAnomalyScore(_NonAuthoritativeBase):
     target_id: str  # scene object / tile / classification-segment ID
     score: float = Field(ge=0.0, le=1.0)
     model_id: str
-    model_sha256: str = Field(min_length=64, max_length=64)
+    model_sha256: str = Field(min_length=64, max_length=64, pattern=r"^[0-9a-fA-F]{64}$")
 
 
 class L4LProposal(_NonAuthoritativeBase):
@@ -116,7 +116,8 @@ class L4LProposal(_NonAuthoritativeBase):
         # pattern TOTaLi-<DISC>-<FEAT>-DRAFT or the TOTaLi-QA-* exemption.
         if v.startswith("TOTaLi-QA-"):
             return v
-        if v.startswith("TOTaLi-") and v.endswith("-DRAFT"):
+        parts = v.split("-")
+        if len(parts) >= 4 and parts[0] == "TOTaLi" and parts[-1] == "DRAFT" and all(parts[1:-1]):
             return v
         raise ValueError(
             f"target_layer={v!r} must be TOTaLi-<DISC>-<FEAT>-DRAFT or TOTaLi-QA-*"
