@@ -17,6 +17,7 @@ PRODUCTION_MODULES = [
     "totali.audit.verify",
     "totali.geodetic.gatekeeper",
     "totali.segmentation.classifier",
+    "totali.models.loader",
     "totali.extraction.extractor",
     "totali.cad_shielding.shield",
     "totali.linting.surveyor_lint",
