@@ -17,6 +17,7 @@ PRODUCTION_MODULES = [
     "totali.audit.verify",
     "totali.geodetic.gatekeeper",
     "totali.segmentation.classifier",
+    "totali.models.loader",
     "totali.extraction.extractor",
     "totali.cad_shielding.shield",
     "totali.linting.surveyor_lint",
@@ -24,6 +25,7 @@ PRODUCTION_MODULES = [
     "totali.pipeline.context",
     "totali.pipeline.models",
     "totali.pipeline.orchestrator",
+    "totali.quarantine_ui.app",
     "totali.repl.contracts",
 ]
 
