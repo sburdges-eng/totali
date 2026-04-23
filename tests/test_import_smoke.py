@@ -27,6 +27,9 @@ PRODUCTION_MODULES = [
     "totali.pipeline.orchestrator",
     "totali.quarantine_ui.app",
     "totali.repl.contracts",
+    "totali.external",
+    "totali.external.auracad_contract",
+    "totali.external.l4l_contract",
 ]
 
 
