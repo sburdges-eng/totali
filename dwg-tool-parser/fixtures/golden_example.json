@@ -1,0 +1,71 @@
+{
+  "schemaVersion": "1.0.0",
+  "file": "fixtures/sample_survey.dxf",
+  "format": "dxf",
+  "version": "R2018",
+  "layers": [
+    {
+      "name": "TOTaLi-SURV-BOUNDARY",
+      "entity_count": 2
+    },
+    {
+      "name": "TOTaLi-SURV-MONUMENT",
+      "entity_count": 1
+    }
+  ],
+  "entities": [
+    {
+      "id": "E0001",
+      "type": "LINE",
+      "layer": "TOTaLi-SURV-BOUNDARY",
+      "properties": {
+        "start": [100.0, 200.0, 0.0],
+        "end": [350.5, 200.0, 0.0]
+      }
+    },
+    {
+      "id": "E0002",
+      "type": "LWPOLYLINE",
+      "layer": "TOTaLi-SURV-BOUNDARY",
+      "properties": {
+        "closed": true,
+        "vertices": [
+          [350.5, 200.0],
+          [350.5, 425.75],
+          [100.0, 425.75],
+          [100.0, 200.0]
+        ]
+      }
+    },
+    {
+      "id": "E0003",
+      "type": "INSERT",
+      "layer": "TOTaLi-SURV-MONUMENT",
+      "properties": {
+        "block_name": "MON_REBAR_CAP",
+        "insertion_point": [100.0, 200.0, 0.0],
+        "rotation_deg": 0.0,
+        "scale": [1.0, 1.0, 1.0]
+      }
+    }
+  ],
+  "blocks": [
+    {
+      "name": "MON_REBAR_CAP",
+      "entity_count": 3
+    }
+  ],
+  "survey_tags": [
+    {
+      "feature": "BOUNDARY",
+      "code": "SURV-BND-01",
+      "epsg": 2903
+    },
+    {
+      "feature": "MONUMENT",
+      "code": "SURV-MON-01",
+      "epsg": 2903
+    }
+  ],
+  "errors": []
+}

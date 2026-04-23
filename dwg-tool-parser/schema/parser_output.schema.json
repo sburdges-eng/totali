@@ -1,0 +1,157 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://totali.local/schemas/dwg-tool-parser/parser_output-1.0.0.json",
+  "title": "DWG/DXF Parser Output",
+  "description": "Canonical JSON shape emitted by dwg-tool-parser for a single DWG or DXF source file. Versioned by schemaVersion (semver). See dwg-tool-parser/AGENTIC.md DP-2.",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "schemaVersion",
+    "file",
+    "format",
+    "version",
+    "layers",
+    "entities",
+    "blocks",
+    "survey_tags",
+    "errors"
+  ],
+  "properties": {
+    "schemaVersion": {
+      "type": "string",
+      "description": "Semver of the parser output schema itself (not the source file version).",
+      "pattern": "^[0-9]+\\.[0-9]+\\.[0-9]+(?:-[0-9A-Za-z.-]+)?(?:\\+[0-9A-Za-z.-]+)?$"
+    },
+    "file": {
+      "type": "string",
+      "description": "Source file path (as supplied to the parser).",
+      "minLength": 1
+    },
+    "format": {
+      "type": "string",
+      "enum": ["dxf", "dwg"],
+      "description": "Detected source format."
+    },
+    "version": {
+      "type": ["string", "null"],
+      "description": "Source file version (e.g. 'AC1027' for DWG R2013, 'R2018' for DXF). Null if undetectable."
+    },
+    "layers": {
+      "type": "array",
+      "description": "Unique layers discovered in the source file.",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["name", "entity_count"],
+        "properties": {
+          "name": {
+            "type": "string",
+            "minLength": 1
+          },
+          "entity_count": {
+            "type": "integer",
+            "minimum": 0
+          }
+        }
+      }
+    },
+    "entities": {
+      "type": "array",
+      "description": "Flattened entity list (LINE, POLYLINE, INSERT, etc.).",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["id", "type", "layer", "properties"],
+        "properties": {
+          "id": {
+            "type": "string",
+            "minLength": 1,
+            "description": "Stable identifier (handle, UUID, or deterministic index)."
+          },
+          "type": {
+            "type": "string",
+            "minLength": 1,
+            "description": "Entity type token (LINE, LWPOLYLINE, POLYLINE, CIRCLE, INSERT, TEXT, etc.)."
+          },
+          "layer": {
+            "type": "string",
+            "minLength": 1,
+            "description": "Name of the owning layer. Must match a layers[].name for an emitted report."
+          },
+          "properties": {
+            "type": "object",
+            "description": "Entity-type-specific properties (geometry, attributes). Free-form."
+          }
+        }
+      }
+    },
+    "blocks": {
+      "type": "array",
+      "description": "Block definitions (reusable symbol libraries).",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["name", "entity_count"],
+        "properties": {
+          "name": {
+            "type": "string",
+            "minLength": 1
+          },
+          "entity_count": {
+            "type": "integer",
+            "minimum": 0
+          }
+        }
+      }
+    },
+    "survey_tags": {
+      "type": "array",
+      "description": "TOTaLi survey-layer tags extracted from layer names or XDATA.",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["feature", "code", "epsg"],
+        "properties": {
+          "feature": {
+            "type": "string",
+            "minLength": 1,
+            "description": "Feature-class label (e.g. 'BOUNDARY', 'UTILITY-GAS')."
+          },
+          "code": {
+            "type": "string",
+            "minLength": 1,
+            "description": "Survey code token (e.g. 'SURV-01')."
+          },
+          "epsg": {
+            "type": "integer",
+            "minimum": 0,
+            "description": "EPSG code of the declared CRS (0 = unknown / unspecified)."
+          }
+        }
+      }
+    },
+    "errors": {
+      "type": "array",
+      "description": "Structured error records collected during parsing. Empty array on clean parse.",
+      "items": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["severity", "message", "location"],
+        "properties": {
+          "severity": {
+            "type": "string",
+            "enum": ["info", "warn", "error"]
+          },
+          "message": {
+            "type": "string",
+            "minLength": 1
+          },
+          "location": {
+            "type": ["string", "null"],
+            "description": "Optional location hint (entity handle, file offset, line number)."
+          }
+        }
+      }
+    }
+  }
+}
