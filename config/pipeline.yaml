@@ -140,3 +140,5 @@ audit:
     - "crs_rejected_by_operator"
     # Audit terminal (A-7)
     - "run_end"
+    # Agent orchestration
+    - "context_injection_detected"
