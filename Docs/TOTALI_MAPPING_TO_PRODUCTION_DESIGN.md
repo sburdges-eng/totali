@@ -185,27 +185,102 @@ bridge, that ruleset applies.
 
 ## 10. What TOTaLi still owes the production design
 
-Ordered by tractability (top = next session):
+Status as of 2026-04-22. IDs (C-4, L-5, etc.) are preserved as stable anchors
+so cross-references from the ledger, commit messages, and other docs keep
+resolving. A checkmark means the item has landed; an open item is still owed.
 
-1. **C-4 CAD format-switch validation** (reject DWG/DGN cleanly when format not
-   implemented; today the string is stored unvalidated). Small code + test.
-2. **C-7 DXF entity-ordering determinism** with a committed ezdxf fixture.
-   Small fixture + byte-parity test.
-3. **L-5 deferred-feature flow** in SurveyorLinter — three decision states
-   (accept / reject / defer), deferred items persist to next session.
-4. **A-8 seal single write API** — mark internal audit paths that bypass
-   `log()` as forbidden (currently none exist, but a linter rule prevents
-   drift).
-5. **DP-2 dwg-tool-parser schema + golden JSON** — formalize the output
-   schema, commit a tiny DXF fixture, round-trip test.
-6. **Survey corpus golden fixtures** under `tests/fixtures/` — synthetic
-   1k-point LAS + DXF pair for end-to-end integration.
-7. **laser-suite LS-2 / LS-3 oracle tests** — hand-computed weighted LS and
-   pair-covariance references.
-8. **Prompt injection guard in agent context-builder** — `allowed_files` must
-   never be modified by retrieved content; add a sanitation pass.
+1. **C-4 CAD format-switch validation** ✅ landed PR #99 — format string now
+   validated via Pydantic ``_known_format`` on ``AuracadReadReport``.
+2. **C-7 DXF entity-ordering determinism** ✅ landed PR #97 — ezdxf fixture
+   committed at ``dwg-tool-parser/fixtures/sample.dxf`` with byte-parity test.
+3. **L-5 deferred-feature flow** ✅ landed PR #96 — three-state
+   accept/reject/defer decision machine in SurveyorLinter; deferred items
+   persist to next session via ledger.
+4. **A-5 audit allowlist + A-7 fsync+close** ✅ landed PR #96 — allowlist
+   enforcement + fsync-on-log + close() semantics in
+   ``totali/audit/logger.py``.
+5. **A-8 single write API** ✅ landed PR #96 — internal audit paths that
+   bypass ``log()`` are now linted; the sealed-write-API test pins drift.
+6. **DP-2 dwg-tool-parser schema + golden JSON** ✅ landed PR #98 — output
+   schema at ``dwg-tool-parser/schema/parser_output.schema.json`` plus golden
+   JSON round-trip test.
+7. **DP-3 ezdxf-backed DXF parser** ✅ landed PR #99 — replaces the old
+   text-scanning prototype; schema-valid output by construction.
+8. **Survey corpus golden fixtures** ✅ landed PR #97 — synthetic LAS + DXF
+   pair committed under ``tests/fixtures/``.
+9. **laser-suite LS-2 / LS-3 oracle tests** ✅ landed PR #98 — hand-computed
+   weighted LS and pair-covariance references with byte-stable oracles.
+10. **Q-4 quarantine UI audit emission** ✅ landed PR #99 — ``quarantine_ui``
+    now emits audit events for every decision transition.
+11. **M-1 ONNX loader with sha256 + manifest** ✅ landed PR #99 — models load
+    only via ``totali/models/loader.py`` with sha256 pin + manifest record.
+12. **Prompt injection guard in agent context-builder** ✅ landed PR #98
+    (sanitizer) + PR #103 (prompt_builder integration) — retrieved blocks
+    route through ``context_sanitizer.sanitize_retrieved``; destructive
+    patterns halt assembly.
+13. **External contract surfaces** ✅ landed PR #100 — frozen Pydantic +
+    Protocol surfaces for auracad and L4L under ``totali/external/``.
+14. **Phase 1 live DxfAuracadAdapter** ✅ landed PR #101 — first concrete
+    ``AuracadAdapter`` backed by the ezdxf parser.
+15. **Phase 2 live StubL4LInferenceAdapter** ✅ landed PR #102 — first
+    concrete deterministic ``L4LInferenceAdapter``; non-authoritative
+    by construction.
+16. **Phase 3A adapter composition** ✅ landed PR #103 — end-to-end test
+    proving the auracad + L4L adapters compose across pipeline-stage
+    boundaries without inter-adapter massaging.
+17. **Phase 3B prompt_builder integration** ✅ landed PR #103 — the single
+    choke-point every retrieved block flows through on its way to prompt
+    assembly.
+18. **Full-pipeline E2E test** ✅ landed PR #104 — exercises all 5 phases
+    plus audit-chain verify and TOTaLi §1.3 invariants.
 
-Deliberately NOT in TOTaLi scope (belongs elsewhere):
+### 10.1 Landed since 2026-04-22
+
+Grouped by module for a quick cross-reference:
+
+- ``totali/audit/``: A-5 + A-7 + A-8 (PR #96); quarantine audit emission
+  Q-4 (PR #99).
+- ``totali/linting/``: L-5 deferred-feature flow (PR #96).
+- ``totali/cad_shielding/``: C-4 format-switch validation (PR #99).
+- ``totali/agents/``: context sanitizer (PR #98); prompt_builder
+  integration (PR #103).
+- ``totali/external/``: frozen contract surfaces (PR #100); Phase 1
+  ``DxfAuracadAdapter`` (PR #101); Phase 2 ``StubL4LInferenceAdapter``
+  (PR #102); Phase 3A composition test (PR #103).
+- ``totali/models/``: M-1 ONNX loader with sha256 + manifest (PR #99).
+- ``dwg-tool-parser/``: DP-2 schema + golden JSON (PR #98); DP-3
+  ezdxf-backed parser (PR #99); C-7 entity-ordering determinism +
+  survey corpus golden fixtures (PR #97).
+- ``laser-suite/``: LS-2 / LS-3 oracle tests (PR #98).
+- ``tests/``: full-pipeline E2E (PR #104) ties the above together with
+  audit-chain verification and §1.3 invariant assertions.
+
+### 10.2 Still out of session scope
+
+Items genuinely owed to the production design but requiring multi-week
+effort and/or sibling-project work before they become TOTaLi-local. These
+are deliberately NOT sequenced as next-session tasks:
+
+- **Geometry kernel** — owned by ``auracad``. TOTaLi consumes kernel output
+  via the ``AuracadAdapter`` contract; the kernel itself is not shipped
+  from TOTaLi.
+- **JEPA training pipeline** — scene-level JEPA training corpus, EMA
+  target encoder, latent predictor, and multi-space embedding store. The
+  Phase 2 stub proves the contract; the real ONNX model is L4L's work.
+- **Vector memory tier** — pgvector / Qdrant / FAISS cache as described in
+  §4 is an orchestrator-tier service, not a TOTaLi-local module.
+- **Temporal / durable workflow** — becomes justified only when runs cross
+  machines or require crash-recovery windows; not yet.
+- **Sigstore artifact signing** — release-pipeline concern; no TOTaLi
+  release machinery yet.
+- **Full DWG reader via LibreDWG** — TOTaLi currently satisfies DXF via
+  ezdxf; DWG support requires a LibreDWG-backed bridge (or the real
+  auracad FFI) and is out of scope for the pure-Python path.
+- **BV_BASE hydration** — large-scale reference-data ingestion that the
+  production design references for ground-truth anchoring; scoped to
+  the data-reroute effort, not the TOTaLi pipeline proper.
+
+Deliberately NOT in TOTaLi scope (belongs elsewhere, unchanged):
 - Geometry kernel (auracad)
 - JEPA scene model (auracad/L4L)
 - Rendering backend (auracad/L4L UI layer)
