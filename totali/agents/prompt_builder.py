@@ -52,6 +52,7 @@ class InjectionHaltError(RuntimeError):
 DESTRUCTIVE_PATTERN_NAMES: frozenset[str] = frozenset(
     {
         "imperative_destructive",  # "you must run/execute/delete/push/merge/deploy"
+        "execute_script",  # "execute this script/code/command"
         "role_override",  # "as your new system/admin/operator"
         "forget_everything",  # "forget everything / all instructions"
     }
@@ -214,7 +215,7 @@ def assemble_prompt_capsule(
         )
         rendered.append(block_text)
         if warnings:
-            warnings_by_block[label] = list(warnings)
+            warnings_by_block.setdefault(label, []).extend(warnings)
             total_warnings += len(warnings)
 
     capsule_text = "\n\n".join(rendered)
