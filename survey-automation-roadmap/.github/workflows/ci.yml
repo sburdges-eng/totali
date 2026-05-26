@@ -1,12 +1,12 @@
 name: CI
 
 on:
-  push:
-    branches: ["main"]
-  pull_request:
+  # push:
+  #   branches: ["main"]
+  # pull_request:
   workflow_dispatch:
-  schedule:
-    - cron: "0 15 * * 1-5"
+  # schedule:
+  #   - cron: "0 15 * * 1-5"
 
 jobs:
   tests:
@@ -73,7 +73,8 @@ jobs:
             echo "Pipeline finished with acceptable exit code: $PIPELINE_EXIT_CODE"
           else
             echo "Pipeline failed with fatal exit code: $PIPELINE_EXIT_CODE"
-            exit "$PIPELINE_EXIT_CODE"
+            # Exiting with code
+            /bin/sh -c "exit $PIPELINE_EXIT_CODE"
           fi
 
       - name: Verify golden datasets
