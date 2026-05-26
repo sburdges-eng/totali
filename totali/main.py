@@ -9,6 +9,7 @@ Usage:
 import click
 import yaml
 import sys
+import re
 from pathlib import Path
 from datetime import datetime
 
@@ -18,17 +19,31 @@ from totali.audit.logger import AuditLogger
 
 
 @click.command()
-@click.option("--input", "input_path", required=True, type=click.Path(exists=True),
-              help="Input point cloud file (.las/.laz/.copc.laz)")
-@click.option("--config", "config_path", default="config/pipeline.yaml",
-              type=click.Path(exists=True), help="Pipeline config YAML")
-@click.option("--phase", type=click.Choice(
-    ["all", "geodetic", "segment", "extract", "shield", "lint"]),
-    default="all", help="Run specific phase or all")
-@click.option("--output", "output_dir", default="output",
-              help="Output directory")
+@click.option(
+    "--input",
+    "input_path",
+    required=True,
+    type=click.Path(exists=True),
+    help="Input point cloud file (.las/.laz/.copc.laz)",
+)
+@click.option(
+    "--config",
+    "config_path",
+    default="config/pipeline.yaml",
+    type=click.Path(exists=True),
+    help="Pipeline config YAML",
+)
+@click.option(
+    "--phase",
+    type=click.Choice(["all", "geodetic", "segment", "extract", "shield", "lint"]),
+    default="all",
+    help="Run specific phase or all",
+)
+@click.option("--output", "output_dir", default="output", help="Output directory")
 @click.option("--project-id", default=None, help="Project identifier for audit trail")
-@click.option("--dry-run", is_flag=True, help="Validate config and inputs without processing")
+@click.option(
+    "--dry-run", is_flag=True, help="Validate config and inputs without processing"
+)
 def main(input_path, config_path, phase, output_dir, project_id, dry_run):
     """TOTaLi-Assisted Drafting Pipeline"""
 
@@ -41,6 +56,10 @@ def main(input_path, config_path, phase, output_dir, project_id, dry_run):
     output_path.mkdir(parents=True, exist_ok=True)
 
     project_id = project_id or f"TOTaLi_{datetime.now().strftime('%Y%m%d_%H%M%S')}"
+    if not re.match(r"^[a-zA-Z0-9_-]+$", project_id):
+        raise click.BadParameter(
+            f"Invalid project-id: {project_id}. Only alphanumeric, underscore, and hyphen allowed."
+        )
 
     # Init audit logger
     audit = AuditLogger(
@@ -49,13 +68,16 @@ def main(input_path, config_path, phase, output_dir, project_id, dry_run):
         hash_algo=config.audit.hash_algorithm,
     )
 
-    audit.log("pipeline_start", {
-        "input": str(input_path),
-        "config": str(config_path),
-        "phase": phase,
-        "project_id": project_id,
-        "dry_run": dry_run,
-    })
+    audit.log(
+        "pipeline_start",
+        {
+            "input": str(input_path),
+            "config": str(config_path),
+            "phase": phase,
+            "project_id": project_id,
+            "dry_run": dry_run,
+        },
+    )
 
     if dry_run:
         click.echo(f"[DRY RUN] Config valid. Input: {input_path}")
@@ -69,11 +91,14 @@ def main(input_path, config_path, phase, output_dir, project_id, dry_run):
 
     try:
         result = pipeline.run(input_path, phase=phase)
-        audit.log("pipeline_complete", {
-            "status": "success",
-            "outputs": [str(p) for p in result.output_files],
-            "duration_sec": result.duration_sec,
-        })
+        audit.log(
+            "pipeline_complete",
+            {
+                "status": "success",
+                "outputs": [str(p) for p in result.output_files],
+                "duration_sec": result.duration_sec,
+            },
+        )
         click.echo(f"\n✓ Pipeline complete. Outputs in: {output_dir}/")
         click.echo(f"  Audit log: {audit.log_path}")
 
