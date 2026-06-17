@@ -81,7 +81,8 @@ class GeodeticGatekeeper(PipelinePhase):
         stats = self._compute_stats(las, input_path, crs_meta)
 
         # U2: no declared/resolvable CRS + inference enabled → infer or route.
-        if crs_meta.epsg_code == 0 and self.crs_inference_enabled:
+        # Do not let coordinate inference override explicitly invalid metadata.
+        if self.crs_inference_enabled and self._is_inference_candidate(crs_meta):
             routed = self._resolve_via_inference(
                 crs_meta, stats, input_path, output_dir
             )
@@ -177,7 +178,7 @@ class GeodeticGatekeeper(PipelinePhase):
         # quarantine UI on a prior run rather than re-inferring.
         resolution = self._read_operator_resolution(item_id, output_dir)
         if resolution is not None and resolution.get("action") == "confirm":
-            epsg = resolution.get("epsg")
+            epsg = self._coerce_resolution_epsg(resolution.get("epsg"))
             if epsg in self.allowed_epsg:
                 self._apply_inferred(
                     crs_meta, epsg, source="operator_resolution",
@@ -185,6 +186,22 @@ class GeodeticGatekeeper(PipelinePhase):
                     reason="operator confirmed CRS via quarantine UI",
                 )
                 return None
+            self.audit.log("crs_out_of_jurisdiction", {
+                "file": str(input_path),
+                "item_id": item_id,
+                "epsg": epsg if epsg is not None else resolution.get("epsg"),
+                "allowed_epsg": self.allowed_epsg,
+                "reason": "operator CRS confirmation rejected; EPSG is missing or outside allowlist",
+            })
+            return PhaseResult(
+                phase="geodetic",
+                success=False,
+                message=(
+                    "operator CRS confirmation rejected; EPSG is missing or "
+                    f"outside allowlist {self.allowed_epsg}"
+                ),
+                data={"rejected": True, "item_id": item_id},
+            )
 
         result = infer_crs(
             declared_epsg=None,
@@ -229,6 +246,21 @@ class GeodeticGatekeeper(PipelinePhase):
 
         # MISSING with no candidates → defer to the existing reject-missing path.
         return None
+
+    @staticmethod
+    def _is_inference_candidate(crs_meta: CRSMetadata) -> bool:
+        if crs_meta.epsg_code != 0:
+            return False
+        return crs_meta.validation_errors in ([], ["No CRS metadata found in LAS file"])
+
+    @staticmethod
+    def _coerce_resolution_epsg(value) -> int | None:
+        if value is None:
+            return None
+        try:
+            return int(value)
+        except (TypeError, ValueError):
+            return None
 
     def _apply_inferred(
         self,

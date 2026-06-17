@@ -15,6 +15,7 @@ import json
 
 import pytest
 
+from totali.geodetic import gatekeeper as gatekeeper_module
 from totali.geodetic.gatekeeper import GeodeticGatekeeper
 from totali.pipeline.context import PipelineContext
 
@@ -93,6 +94,31 @@ class TestSingleZoneInference:
         assert inferred[0]["data"]["epsg"] == 2231
         assert inferred[0]["data"]["requires_review"] is True
 
+    def test_invalid_declared_wkt_is_not_replaced_by_inference(
+        self, audit_logger, tmp_path, monkeypatch
+    ):
+        def _raise_invalid_wkt(_wkt):
+            raise gatekeeper_module.CRSError("bad WKT")
+
+        fake_las = gatekeeper_module.laspy.read("fake")
+        fake_vlr = type("FakeVLR", (), {})()
+        fake_vlr.record_id = 2112
+        fake_vlr.record_data = b"invalid CRS WKT"
+        fake_las.vlrs = [fake_vlr]
+        monkeypatch.setattr(gatekeeper_module.laspy, "read", lambda _path: fake_las)
+        monkeypatch.setattr(gatekeeper_module.CRS, "from_wkt", _raise_invalid_wkt)
+
+        gk = _mk_gatekeeper(
+            audit_logger,
+            crs_inference_enabled=True,
+            jurisdiction_zones=[_ZONE_WIDE_2231, _ZONE_FAR_2233],
+        )
+        result, _ = _run(gk, tmp_path)
+
+        assert result.success is False
+        assert "Invalid CRS WKT" in result.message
+        assert audit_logger.get_events("crs_inferred") == []
+
 
 class TestAmbiguousQuarantine:
     def test_two_zones_route_to_quarantine(self, audit_logger, tmp_path):
@@ -150,6 +176,31 @@ class TestOperatorResolutionHonored:
         result = gk.run(ctx)
         assert result.success is True
         assert result.data["crs"].epsg_code == 2232
+
+    def test_invalid_confirm_resolution_fails_without_reinferring(
+        self, audit_logger, tmp_path
+    ):
+        out = tmp_path / "out"
+        out.mkdir()
+        (out / "survey_crs_resolution.json").write_text(
+            json.dumps(
+                {"item_id": "survey", "action": "confirm", "epsg": 9999, "operator": "alice"}
+            )
+        )
+        gk = _mk_gatekeeper(
+            audit_logger,
+            crs_inference_enabled=True,
+            jurisdiction_zones=[_ZONE_WIDE_2231, _ZONE_FAR_2233],  # would infer 2231
+        )
+        ctx = PipelineContext(input_path=str(_make_las(tmp_path)), output_dir=out)
+        result = gk.run(ctx)
+
+        assert result.success is False
+        assert "operator CRS confirmation rejected" in result.message
+        assert audit_logger.get_events("crs_inferred") == []
+        events = audit_logger.get_events("crs_out_of_jurisdiction")
+        assert len(events) == 1
+        assert events[0]["data"]["epsg"] == 9999
 
 
 class TestQuarantineQueueWiring:
