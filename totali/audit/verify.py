@@ -14,6 +14,51 @@ import hashlib
 import json
 import sys
 from pathlib import Path
+from typing import Any, Optional, Sequence
+
+
+def verify_certification(
+    record: Any,
+    *,
+    required_fields: Sequence[str] = (),
+    expected_record_hash: Optional[str] = None,
+) -> tuple[bool, list[str]]:
+    """U3: validate a certification record's completeness and tamper-evidence.
+
+    Checks (a) the certifier identity is complete, (b) every chain link
+    (raw_hash -> classified -> extracted -> lint decisions) is present, (c) all
+    ``required_fields`` (the advisor-defined board/ALTA set) are present in the
+    record's ``board_alta_fields``, and (d) — when ``expected_record_hash`` is
+    supplied — the recomputed record hash still matches (no tampering).
+
+    Returns ``(ok, errors)``. The required-field set is caller-supplied because
+    it is advisor-defined (see ``certification.REQUIRED_BOARD_ALTA_FIELDS``).
+    """
+    errors: list[str] = []
+
+    certifier = getattr(record, "certifier", None)
+    if certifier is None or not certifier.is_complete():
+        missing = "certifier identity incomplete (name/license_number/jurisdiction required)"
+        errors.append(missing)
+
+    for link in ("raw_hash", "classified_ref", "extracted_ref"):
+        if not getattr(record, link, ""):
+            errors.append(f"chain link missing/empty: {link}")
+    if not getattr(record, "lint_decision_refs", None):
+        errors.append("chain link missing/empty: lint_decision_refs")
+
+    fields = getattr(record, "board_alta_fields", {}) or {}
+    for key in required_fields:
+        if key not in fields:
+            errors.append(f"required board/ALTA field missing: {key}")
+
+    if expected_record_hash is not None and record.record_hash() != expected_record_hash:
+        errors.append(
+            "record hash mismatch — certification record tampered or altered "
+            f"after sealing (expected {expected_record_hash[:16]}...)"
+        )
+
+    return len(errors) == 0, errors
 
 
 def verify_log(path: Path, hash_algo: str = "sha256") -> tuple[bool, list[str]]:
