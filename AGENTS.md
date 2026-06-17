@@ -21,7 +21,7 @@ Use the shared bootstrap script to preinstall test dependencies and editable pac
 bash tools/bootstrap_cloud_agent_env.sh
 ```
 
-This installs `pytest`, `scipy`, and `pydantic` explicitly, then installs the root test-relevant subset from `requirements.txt` (`numpy`, `scipy`, `laspy`, `pyproj`, `pyyaml`, `click`, `pydantic`) and editable installs for `totali`, `laser-suite`, and `survey-automation-roadmap`.
+This installs `pytest`, `scipy`, `pydantic`, and `pyarrow` (RC gate / parquet) explicitly, then installs the root test-relevant subset from `requirements.txt` (`numpy`, `scipy`, `laspy`, `pyproj`, `pyyaml`, `click`, `pydantic`) and editable installs for `totali`, `laser-suite`, and `survey-automation-roadmap`.
 
 ### Sub-projects
 
@@ -34,7 +34,7 @@ This installs `pytest`, `scipy`, and `pydantic` explicitly, then installs the ro
 
 ### Known issues (pre-existing, not introduced by setup)
 
-- **laser-suite**: 6 of 10 tests fail due to a `TypeError` in `laser_suite/config.py` (line 66, `condition_number_limit` compared as string vs int) and an `AdjustmentError` in `adjustment.py`. These are existing code bugs, not environment issues.
+- **venv pip**: If `.venv/bin/pip` fails with `pip._vendor.rich._emoji_codes`, reinstall pip: `uv pip install --reinstall pip --python .venv/bin/python` (or recreate the venv).
 - **groundtruthos-data**: The `pyproject.toml` specifies an invalid build backend (`setuptools.backends._legacy:_Backend`), so `pip install -e .` fails. Dependencies are installed directly via `pip install` of the listed packages instead.
 - **ruff** lint: Running `ruff check totali/` shows 13 pre-existing lint warnings (unused imports). No ruff config is committed; the linter runs with defaults.
 
