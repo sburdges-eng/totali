@@ -142,6 +142,7 @@ audit:
     # Pipeline / orchestrator
     - "pipeline_start"
     - "pipeline_complete"
+    - "metrics_recorded"  # U5: per-phase + total timing artifact for the pilot baseline
     - "pipeline_error"
     - "phase_start"
     - "phase_complete"
