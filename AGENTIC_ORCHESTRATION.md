@@ -92,7 +92,7 @@ If the task conflicts with a TOTaLi invariant, output exactly: INVARIANT CONFLIC
     { "name": "repl",          "status": "planned",     "language": "Python", "path": "totali/repl/",          "deps": ["audit","cad_shielding","linting"] },
     { "name": "dwg_tool_parser","status": "stub",       "language": "Python+C++", "path": "dwg-tool-parser/",  "deps": ["cad_shielding"] }
   ],
-  "current_task_id": "G-3",
+  "current_task_id": "G-7",
   "completed_tasks": [],
   "constraints": [
     "No undocumented libraries",
@@ -254,7 +254,7 @@ CURRENT MODULE CONTEXT
   ],
   "current_generation": {
     "current_module": "geodetic",
-    "current_plan_step": "G-3",
+    "current_plan_step": "G-7",
     "validation_rules": [
       "must_lint_clean", "must_pass_unit_tests", "must_pass_integration",
       "must_emit_audit_events_for_new_actions",
@@ -273,37 +273,37 @@ duplicate here, read there.
 
 ```json
 {
-  "task_id": "G-3",
+  "task_id": "G-7",
   "module": "geodetic",
   "component": "gatekeeper",
-  "objective": "Enforce US survey foot unit validation with 0.01 ft tolerance; reject metric inputs with an audit event.",
-  "plan_reference": "totali/geodetic/AGENTIC.md #G-3",
+  "objective": "Enforce GEOID18 allowlist for orthometric heights; reject unsupported geoid models with audit event.",
+  "plan_reference": "totali/geodetic/AGENTIC.md #G-7",
   "inputs": {
-    "required_functions": ["GeodeticGatekeeper._validate_units", "GeodeticGatekeeper._reject_metric"],
+    "required_functions": ["GeodeticGatekeeper._validate_geoid", "GeodeticGatekeeper._reject_unsupported_geoid"],
     "config_section": "geodetic"
   },
   "constraints": [
-    "No silent reprojection",
-    "Reject on unit mismatch; never coerce",
-    "Emit audit event 'unit_rejected' with file path and declared unit",
+    "No silent geoid substitution",
+    "Reject unsupported geoid models; never coerce",
+    "Emit audit event 'geoid_rejected' with requested model and allowlist",
     "Deterministic output",
-    "Thresholds come from config.geodetic.unit_tolerance_ft; no literals"
+    "Allowlist from config.geodetic.geoid_model; default GEOID18"
   ],
   "files_allowed": [
     "totali/geodetic/gatekeeper.py",
     "tests/test_geodetic.py",
-    "tests/test_geodetic_units.py"
+    "tests/test_geodetic_geoid.py"
   ],
   "upstream_interfaces": [
     "totali/audit/logger.py::AuditLogger.log",
     "totali/pipeline/base_phase.py::PipelinePhase",
     "totali/pipeline/context.py::PipelineContext"
   ],
-  "audit_events_allowed": ["unit_validated", "unit_rejected"],
+  "audit_events_allowed": ["geoid_validated", "geoid_rejected"],
   "gates": [
     "ruff check totali/geodetic/ tests/",
     "pytest tests/test_geodetic.py -v",
-    "pytest tests/test_geodetic_units.py -v",
+    "pytest tests/test_geodetic_geoid.py -v",
     "pytest tests/test_integration.py -v",
     "audit_chain_verify on produced run"
   ]
