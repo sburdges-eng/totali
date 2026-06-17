@@ -188,6 +188,31 @@ class TestPhaseRun:
         assert result.success is False
 
     @patch("totali.cad_shielding.shield.CADShield._write_dxf")
+    def test_dxf_manifest_carries_audit_reference(
+        self, mock_write, shield, tmp_output, sample_extraction, sample_classification
+    ):
+        """U4: the DXF deliverable's manifest must carry a reference back to the
+        audit chain (raw input hash + audit log path) so it is verifiable."""
+        mock_write.side_effect = lambda ext, path, ctx: shield._write_dxf_manual(ext, path, ctx)
+        ctx = PipelineContext(
+            input_path="/f.las", output_dir=tmp_output,
+            extraction=sample_extraction,
+            crs=CRSMetadata(epsg_code=2231, is_valid=True),
+            stats=PointCloudStats(point_count=500),
+            classification=sample_classification,
+            input_hash="rawhash123",
+        )
+        result = shield.run(ctx)
+        manifest = result.data["manifest"]
+        assert "audit_reference" in manifest
+        assert manifest["audit_reference"]["input_hash"] == "rawhash123"
+        assert manifest["audit_reference"]["audit_log"] == str(shield.audit.log_path)
+
+        # And it is persisted in the sidecar artifact next to the DXF.
+        on_disk = json.loads((tmp_output / "entity_manifest.json").read_text())
+        assert on_disk["audit_reference"]["input_hash"] == "rawhash123"
+
+    @patch("totali.cad_shielding.shield.CADShield._write_dxf")
     def test_all_entities_are_draft(self, mock_write, shield, tmp_output, sample_extraction, sample_classification):
         mock_write.side_effect = lambda ext, path, ctx: shield._write_dxf_manual(ext, path, ctx)
         ctx = PipelineContext(
