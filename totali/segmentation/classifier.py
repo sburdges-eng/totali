@@ -3,9 +3,20 @@ Phase 2: Discriminative ML Segmentation
 ========================================
 Non-authoritative classification. Produces probabilities + confidence, NOT geometry.
 Uses ONNX runtime for model inference on point cloud batches.
-"""
 
-from pathlib import Path
+U1 (HITL classifier): the model is loaded through the deterministic
+``totali.models.loader.load_onnx`` sha256/manifest contract — a hash/manifest
+mismatch fails loudly instead of silently classifying with a tampered model.
+Surveyor corrections of these *advisory* labels are captured by
+``totali.segmentation.corrections.CorrectionStore`` (the training flywheel).
+
+TODO(KTD3 / partner-data): the model *choice* — adapt a pretrained point-cloud
+model vs. train a custom one — is the first execution-time research spike and
+requires the design-partner dataset in hand. Until that lands there is no
+provisioned ONNX model, so the rule-based fallback below is the live path. Do
+NOT fabricate a model or training data here; wire HITL against the loader
+contract only.
+"""
 
 import numpy as np
 
@@ -33,6 +44,9 @@ class PointCloudClassifier(PipelinePhase):
         self.batch_size = config.get("batch_size", 65536)
         self.voxel_size = config.get("voxel_size", 0.05)
         self.classes = config.get("classes", {})
+        # U1: optional integrity inputs threaded into the sha256/manifest loader.
+        self.expected_sha256 = config.get("expected_sha256")
+        self.manifest = config.get("manifest")
         self.session = None
 
     def validate_inputs(self, context: PipelineContext) -> tuple[bool, list[str]]:
@@ -44,23 +58,43 @@ class PointCloudClassifier(PipelinePhase):
         return len(errors) == 0, errors
 
     def _load_model(self):
-        """Load ONNX model. Falls back to rule-based if model not found."""
-        model_file = Path(self.model_path)
-        if not model_file.exists():
+        """Load the ONNX model via the deterministic sha256/manifest loader.
+
+        Returns True with ``self.session`` set on success. Benign absence — no
+        model file on disk, or onnxruntime not installed — returns False and logs
+        a warning so the caller uses the rule-based fallback.
+
+        A hash or manifest MISMATCH is deliberately NOT caught: it means the
+        on-disk model is not the one we provisioned (tamper/corruption), so it
+        propagates loudly rather than letting us silently classify with the
+        wrong model.
+        """
+        from totali.models.loader import (
+            ManifestError,
+            ModelHashMismatch,
+            ModelNotFoundError,
+            load_onnx,
+        )
+
+        try:
+            self.session = load_onnx(
+                self.model_path,
+                device=self.device,
+                expected_sha256=self.expected_sha256,
+                manifest=self.manifest,
+            )
+            return True
+        except ModelNotFoundError:
             self.audit.log("classify", {
                 "warning": f"Model not found at {self.model_path}, using rule-based fallback"
             })
             return False
-
-        try:
-            import onnxruntime as ort
-            providers = ["CUDAExecutionProvider", "CPUExecutionProvider"] \
-                if self.device == "cuda" else ["CPUExecutionProvider"]
-            self.session = ort.InferenceSession(str(model_file), providers=providers)
-            return True
         except ImportError:
             self.audit.log("classify", {"warning": "onnxruntime not available, using fallback"})
             return False
+        # ModelHashMismatch / ManifestError intentionally propagate (loud failure).
+        except (ModelHashMismatch, ManifestError):
+            raise
 
     def run(self, context: PipelineContext) -> PhaseResult:
         points_xyz = context.points_xyz
