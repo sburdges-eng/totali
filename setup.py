@@ -18,6 +18,11 @@ setup(
     extras_require={
         "ml": ["onnxruntime>=1.14.0", "open3d>=0.17.0"],
         "cad": ["ezdxf>=0.18.0"],
+        # U6: minimal deps for a green, fully-mocked CI run. Pure-Python only —
+        # no native libs (no pdal/open3d/onnxruntime). ezdxf + flask are needed
+        # by the CAD-adapter and quarantine-UI tests; the rest of the suite runs
+        # against conftest stubs.
+        "test": ["pytest>=9.0.2", "ezdxf>=0.18.0", "flask>=3.0.0"],
         "full": [
             "onnxruntime>=1.14.0",
             "open3d>=0.17.0",
