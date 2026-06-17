@@ -125,27 +125,25 @@ def _parse_descriptions(path: Path) -> dict[str, bool]:
     return out
 
 
-def load_field_codes(
-    fld_path: os.PathLike[str] | str,
-    descriptions_path: os.PathLike[str] | str | None = None,
-) -> FieldCodeTable:
-    """Parse a ``.fld`` library (and optional descriptions CSV) into a table.
+def _first_data_line(path: Path) -> str:
+    with path.open(encoding="utf-8", errors="replace") as f:
+        for raw in f:
+            line = raw.strip()
+            if line:
+                return line
+    return ""
 
-    Raises :class:`FileNotFoundError` if ``fld_path`` is missing. A missing or
-    unreadable descriptions CSV is tolerated (linework is left unknown).
-    """
-    fld = Path(fld_path)
-    if not fld.exists():
-        raise FileNotFoundError(f"field-code library not found: {fld}")
 
-    linework_by_code: dict[str, bool] = {}
-    if descriptions_path is not None:
-        desc = Path(descriptions_path)
-        if desc.exists():
-            linework_by_code = _parse_descriptions(desc)
+def _is_csv_format(path: Path) -> bool:
+    """CSV-style library (``Field Code,Layer,Symbol,Linework``) vs pipe 2010V."""
+    first = _first_data_line(path)
+    return "|" not in first and "," in first
 
+
+def _parse_pipe_fld(path: Path, linework_by_code: dict[str, bool]) -> dict[str, FieldCode]:
+    """Carlson 2010V pipe format; layer=col1, symbol=col2; linework from CSV."""
     codes: dict[str, FieldCode] = {}
-    with fld.open(encoding="utf-8", errors="replace") as f:
+    with path.open(encoding="utf-8", errors="replace") as f:
         for raw in f:
             line = raw.rstrip("\n")
             if not line or line.startswith("#"):  # blank or header line
@@ -162,7 +160,54 @@ def load_field_codes(
                 symbol=fields[2].strip(),
                 linework=linework_by_code.get(code),
             )
-    return FieldCodeTable(codes)
+    return codes
+
+
+def _parse_csv_fld(path: Path) -> dict[str, FieldCode]:
+    """Simple CSV library: ``Field Code,Layer,Symbol,Linework`` with inline linework."""
+    codes: dict[str, FieldCode] = {}
+    with path.open(newline="", encoding="utf-8", errors="replace") as f:
+        for row in _csv.reader(f):
+            if not row:
+                continue
+            code = row[0].strip()
+            if not code or code in ("Field Code", _TEMPLATE_CODE):
+                continue
+            layer = row[1].strip() if len(row) > 1 else ""
+            symbol = row[2].strip() if len(row) > 2 else ""
+            linework: Optional[bool] = None
+            if len(row) > 3 and row[3].strip():
+                linework = row[3].strip().upper() == "YES"
+            codes[code] = FieldCode(code=code, layer=layer, symbol=symbol, linework=linework)
+    return codes
+
+
+def load_field_codes(
+    fld_path: os.PathLike[str] | str,
+    descriptions_path: os.PathLike[str] | str | None = None,
+) -> FieldCodeTable:
+    """Parse a field-code library into a table, auto-detecting the format.
+
+    Supports the Carlson 2010V pipe ``.fld`` (layer=col1, symbol=col2; linework
+    from a companion descriptions CSV) and the simple CSV library
+    (``Field Code,Layer,Symbol,Linework`` with inline linework).
+
+    Raises :class:`FileNotFoundError` if ``fld_path`` is missing. A missing or
+    unreadable descriptions CSV is tolerated (pipe-format linework left unknown).
+    """
+    fld = Path(fld_path)
+    if not fld.exists():
+        raise FileNotFoundError(f"field-code library not found: {fld}")
+
+    if _is_csv_format(fld):
+        return FieldCodeTable(_parse_csv_fld(fld))
+
+    linework_by_code: dict[str, bool] = {}
+    if descriptions_path is not None:
+        desc = Path(descriptions_path)
+        if desc.exists():
+            linework_by_code = _parse_descriptions(desc)
+    return FieldCodeTable(_parse_pipe_fld(fld, linework_by_code))
 
 
 def load_default() -> FieldCodeTable:

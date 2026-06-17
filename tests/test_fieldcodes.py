@@ -108,6 +108,34 @@ class TestLinework:
         assert table.is_linework("TOPO") is None
 
 
+SAMPLE_CSV_FLD = (
+    "Field Code,Layer,Symbol,Linework\n"
+    "7V1,TOPO,DOT1,YES\n"
+    "FND,TOPO,DOT1,YES\n"
+    "CP,CONTROL_POINT,CTRLPT,NO\n"
+    "WL,WATERLINE,WATER,YES\n"
+)
+
+
+class TestCsvFormat:
+    def test_csv_library_parses_with_inline_linework(self, tmp_path):
+        p = tmp_path / "universal.fld"
+        p.write_text(SAMPLE_CSV_FLD, encoding="utf-8")
+        table = load_field_codes(p)  # no descriptions CSV needed
+        assert set(table.codes()) == {"7V1", "FND", "CP", "WL"}
+        assert table.layer_for("CP") == "CONTROL_POINT"
+        assert table.symbol_for("WL") == "WATER"
+        assert table.is_linework("WL") is True
+        assert table.is_linework("CP") is False
+        assert table.classes() == ("CONTROL_POINT", "TOPO", "WATERLINE")
+
+    def test_csv_header_row_skipped(self, tmp_path):
+        p = tmp_path / "universal.fld"
+        p.write_text(SAMPLE_CSV_FLD, encoding="utf-8")
+        table = load_field_codes(p)
+        assert "Field Code" not in table
+
+
 class TestErrorsAndDefaults:
     def test_missing_fld_raises(self, tmp_path):
         with pytest.raises(FileNotFoundError):
