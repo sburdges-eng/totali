@@ -21,6 +21,7 @@ from totali.pipeline.models import (
 from totali.pipeline.base_phase import PipelinePhase
 from totali.pipeline.context import PipelineContext
 from totali.audit.logger import AuditLogger
+from totali.cad_shielding.geometry_healer import GeometryHealer, HealingConfig
 
 
 # C-3: TOTaLi invariant §1.3 — every emitted layer must end in -DRAFT
@@ -60,6 +61,21 @@ class CADShield(PipelinePhase):
         # C-4 then C-3: fail fast on misconfigured deployment.
         self._validate_format(self.format)
         self._validate_layer_mapping(self.layer_map)
+
+        # C-2: real geometry healing. Repairs what it can and quarantines
+        # (excludes) what it can't, so degenerate geometry never reaches the DXF.
+        self.healer = GeometryHealer(
+            HealingConfig(
+                close_tolerance=self.healing_cfg.get("close_tolerance", 0.001),
+                degenerate_threshold=self.healing_cfg.get("degenerate_face_threshold", 0.0001),
+                snap_tolerance=self.healing_cfg.get("snap_tolerance", 0.0),
+                check_self_intersection=self.healing_cfg.get("self_intersection_check", True),
+                repair_self_intersection=self.healing_cfg.get("repair_self_intersection", True),
+                weld_vertices=self.healing_cfg.get("weld_vertices", True),
+                remove_duplicates=self.healing_cfg.get("remove_duplicates", True),
+                close_polygons=self.healing_cfg.get("close_polygons", True),
+            )
+        )
 
         self._id_prefix = uuid.uuid4().hex[:6]
         self._id_counter = itertools.count()
@@ -163,74 +179,76 @@ class CADShield(PipelinePhase):
         )
 
     def _heal_geometry(self, extraction: ExtractionResult) -> HealingReport:
-        """Validate and heal geometry before CAD insertion."""
+        """Heal geometry before CAD insertion.
+
+        C-2: healable geometry is repaired in place; geometry that cannot be
+        healed is EXCLUDED (quarantined) so it never reaches the DXF. The branch
+        previously only *counted* issues and wrote degenerate geometry anyway.
+        """
         report = HealingReport()
-        close_tol = self.healing_cfg.get("close_tolerance", 0.001)
         degen_tol = self.healing_cfg.get("degenerate_face_threshold", 0.0001)
 
-        # Check DTM faces
-        if extraction.dtm_faces is not None:
+        # DTM mesh: heal, then drop degenerate faces from the written set.
+        if extraction.dtm_vertices is not None and extraction.dtm_faces is not None:
             report.input_entity_count += len(extraction.dtm_faces)
-            for i, face in enumerate(extraction.dtm_faces):
-                verts = extraction.dtm_vertices[face]
-                area = 0.5 * np.linalg.norm(
-                    np.cross(verts[1] - verts[0], verts[2] - verts[0])
-                )
-                if area < degen_tol:
-                    report.quarantined_count += 1
-                    report.issues.append(f"Degenerate DTM face {i}: area={area:.8f}")
-                else:
-                    report.passed_count += 1
+            healed_v, healed_f, mesh_issues = self.healer.heal_mesh(
+                extraction.dtm_vertices, extraction.dtm_faces, "dtm_mesh"
+            )
+            report.issues.extend(mesh_issues)
+            if healed_v is None or healed_f is None or len(healed_f) == 0:
+                report.quarantined_count += len(extraction.dtm_faces)
+                extraction.dtm_faces = np.empty((0, 3), dtype=int)
+            else:
+                kept = []
+                for i, face in enumerate(healed_f):
+                    verts = healed_v[face]
+                    area = 0.5 * np.linalg.norm(
+                        np.cross(verts[1] - verts[0], verts[2] - verts[0])
+                    )
+                    if area < degen_tol:
+                        report.quarantined_count += 1
+                        report.issues.append(f"Degenerate DTM face {i}: area={area:.8f}")
+                    else:
+                        kept.append(face)
+                        report.passed_count += 1
+                extraction.dtm_vertices = healed_v
+                extraction.dtm_faces = np.array(kept) if kept else np.empty((0, 3), dtype=int)
 
-        # Check polylines (breaklines, contours, curbs, wires)
-        polyline_sets = [
+        for name, lines in [
             ("breaklines", extraction.breaklines),
             ("contours_minor", extraction.contours_minor),
             ("contours_index", extraction.contours_index),
             ("curbs", extraction.curb_lines),
             ("wires", extraction.wire_lines),
-        ]
+        ]:
+            self._heal_entities(lines, name, self.healer.heal_polyline, report)
 
-        for name, lines in polyline_sets:
-            for i, line in enumerate(lines):
-                report.input_entity_count += 1
-                if len(line) < 2:
-                    report.quarantined_count += 1
-                    report.issues.append(f"{name}[{i}]: fewer than 2 vertices")
-                    continue
-
-                # Check for duplicate consecutive vertices
-                diffs = np.linalg.norm(np.diff(line[:, :2], axis=0), axis=1)
-                dupes = np.sum(diffs < close_tol)
-                if dupes > 0:
-                    report.healed_count += 1
-                    report.issues.append(
-                        f"{name}[{i}]: removed {dupes} duplicate vertices"
-                    )
-                else:
-                    report.passed_count += 1
-
-        # Check polygons (buildings, hardscape, occlusion zones)
-        polygon_sets = [
+        for name, polys in [
             ("buildings", extraction.building_footprints),
             ("hardscape", extraction.hardscape_polygons),
             ("occlusion_zones", extraction.occlusion_zones),
-        ]
-
-        for name, polys in polygon_sets:
-            for i, poly in enumerate(polys):
-                report.input_entity_count += 1
-                if len(poly) < 3:
-                    report.quarantined_count += 1
-                    report.issues.append(f"{name}[{i}]: fewer than 3 vertices")
-                else:
-                    # Check if closed
-                    if np.linalg.norm(poly[0] - poly[-1]) > close_tol:
-                        report.healed_count += 1
-                    else:
-                        report.passed_count += 1
+        ]:
+            self._heal_entities(polys, name, self.healer.heal_polygon, report)
 
         return report
+
+    def _heal_entities(self, items: list, name: str, heal_fn, report: HealingReport) -> None:
+        """Heal each entity IN PLACE; quarantined (None) entities are dropped from
+        the list so they are excluded from the DXF deliverable (C-2)."""
+        kept = []
+        for i, geom in enumerate(items):
+            report.input_entity_count += 1
+            healed, issues = heal_fn(geom, f"{name}[{i}]")
+            report.issues.extend(issues)
+            if healed is None:
+                report.quarantined_count += 1
+                continue
+            kept.append(healed)
+            if issues:
+                report.healed_count += 1
+            else:
+                report.passed_count += 1
+        items[:] = kept
 
     def _write_dxf(self, extraction: ExtractionResult, path: Path, context: PipelineContext = None) -> dict:
         """Write extraction results to DXF with proper layer mapping."""

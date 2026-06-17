@@ -1,7 +1,9 @@
 # Agents — Agentic Completion Plan
 
-Scope: `totali/agents/` — `coder_agent.py` and any future agentic helpers that execute
-inside the pipeline runtime.
+Scope: `totali/agents/` — runtime agentic helpers (`context_sanitizer.py`,
+`prompt_builder.py`) and any future helpers that execute inside the pipeline
+runtime. (The former `coder_agent.py` in-process LLM codegen driver was removed —
+see the note below.)
 
 ## Purpose
 In-process agentic components that can be driven by the pipeline or operator tooling to
@@ -36,10 +38,14 @@ these are runtime helpers with bounded authority.
 2. Default config has all agents disabled; enabling one requires an explicit project config.
 3. Every agent in the module has a declared permission block.
 
+> **Removed:** `coder_agent.py` (in-process 70B-LLM early-fusion codegen driver)
+> and its planned `tests/test_coder_agent.py` were dropped when the pipeline moved
+> away from in-process LLM codegen. Current runtime helpers are
+> `context_sanitizer.py` (prompt-injection scrub) + `prompt_builder.py`.
+
 ## Tests required
-Missing / to add:
-- `tests/test_agent_permissions.py` — permission-block declaration presence and enforcement.
-- `tests/test_coder_agent.py` — basic smoke of `coder_agent.py` with a stubbed LLM.
+- `tests/test_agent_context_sanitizer.py` — injection-scrub coverage.
+- `tests/test_prompt_builder.py` — context-capsule assembly + audit emission.
 
 ## Dependencies
 - **Upstream:** `totali/audit/`, `totali/pipeline/`.

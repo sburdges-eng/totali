@@ -1,13 +1,9 @@
 """Model component exports.
 
-`TotaliMultimodalProjector` requires `torch`. Imports guarded so that
-environments without torch (e.g. the minimal test venv) can still load
-`totali.models.loader` and other sibling modules.
+`totali.models` hosts the deterministic ONNX model loader (`loader.py`). The
+former `projection.py` multimodal early-fusion projector (and its `coder_agent`
+driver) were removed when the pipeline moved away from in-process LLM codegen;
+import `totali.models.loader` directly.
 """
 
-try:
-    from .projection import TotaliMultimodalProjector  # noqa: F401
-
-    __all__ = ["TotaliMultimodalProjector"]
-except ImportError:  # pragma: no cover - environment-dependent
-    __all__ = []
+__all__: list[str] = []

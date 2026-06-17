@@ -49,8 +49,8 @@ def verify_certification(
 
     fields = getattr(record, "board_alta_fields", {}) or {}
     for key in required_fields:
-        if key not in fields:
-            errors.append(f"required board/ALTA field missing: {key}")
+        if key not in fields or fields[key] in (None, "", [], {}, ()):
+            errors.append(f"required board/ALTA field missing/empty: {key}")
 
     if expected_record_hash is not None and record.record_hash() != expected_record_hash:
         errors.append(
