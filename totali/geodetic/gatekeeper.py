@@ -12,6 +12,7 @@ from pathlib import Path
 
 import numpy as np
 import laspy
+import pyproj
 from pyproj import CRS, Transformer
 from pyproj.exceptions import CRSError
 
@@ -62,6 +63,12 @@ class GeodeticGatekeeper(PipelinePhase):
         self.auto_assign_high_confidence = config.get("auto_assign_high_confidence", True)
         self.quarantine_ui_port = int(config.get("quarantine_ui_port", 5050))
         self.geoid_model = config.get("geoid_model", "GEOID18")
+        allowed_geoids = config.get("allowed_geoid_models")
+        if allowed_geoids is None:
+            allowed_geoids = [self.geoid_model]
+        self.allowed_geoid_models = frozenset(
+            self._normalize_geoid(name) for name in allowed_geoids
+        )
         # G-3: tolerance carried into unit_rejected audit payloads for
         # downstream elevation-precision checks.
         self.unit_tolerance_ft = float(config.get("unit_tolerance_ft", 0.01))
@@ -112,24 +119,24 @@ class GeodeticGatekeeper(PipelinePhase):
 
         # Hash input for chain of custody
         input_hash = self._hash_file(input_path)
-        self.audit.log("ingest", {
+        self.audit.log("ingest", self._audit_payload({
             "file": str(input_path),
             "sha256": input_hash,
             "point_count": stats.point_count,
             "crs": f"EPSG:{crs_meta.epsg_code}",
             "bounds_min": stats.bounds_min.tolist() if stats.bounds_min is not None else None,
             "bounds_max": stats.bounds_max.tolist() if stats.bounds_max is not None else None,
-        })
+        }))
 
         # Transform if needed
         points_xyz, transform_applied = self._apply_transforms(las, crs_meta)
 
         if transform_applied:
-            self.audit.log("transform", {
+            self.audit.log("transform", self._audit_payload({
                 "from_crs": f"EPSG:{crs_meta.epsg_code}",
                 "to_crs": f"EPSG:{self.allowed_epsg[0]}",
                 "geoid": self.geoid_model,
-            })
+            }))
 
         # Write standardized output
         out_path = output_dir / f"{input_path.stem}_gated.las"
@@ -245,8 +252,18 @@ class GeodeticGatekeeper(PipelinePhase):
             if routed is not None:
                 return routed
 
+        declared_geoid = self._read_declared_geoid(input_path)
+        geoid_errors, resolved_geoid = self._validate_geoid(input_path, declared_geoid)
+        if geoid_errors:
+            return PhaseResult(
+                phase="geodetic",
+                success=False,
+                message=f"Geoid validation failed: {geoid_errors}",
+            )
+        crs_meta.geoid_model = resolved_geoid
+
         input_hash = self._hash_file(input_path)
-        self.audit.log("ingest", {
+        self.audit.log("ingest", self._audit_payload({
             "file": str(input_path),
             "sha256": input_hash,
             "point_count": stats.point_count,
@@ -254,7 +271,7 @@ class GeodeticGatekeeper(PipelinePhase):
             "crs": f"EPSG:{crs_meta.epsg_code}",
             "bounds_min": stats.bounds_min.tolist(),
             "bounds_max": stats.bounds_max.tolist(),
-        })
+        }))
 
         report_path = output_dir / f"{input_path.stem}_geodetic_report.json"
         report = {
@@ -374,13 +391,13 @@ class GeodeticGatekeeper(PipelinePhase):
             )
 
         if result.is_rejected:
-            self.audit.log("crs_out_of_jurisdiction", {
+            self.audit.log("crs_out_of_jurisdiction", self._audit_payload({
                 "file": str(input_path),
                 "item_id": item_id,
                 "reason": result.reason,
                 "bounds_min": stats.bounds_min.tolist() if stats.bounds_min is not None else None,
                 "bounds_max": stats.bounds_max.tolist() if stats.bounds_max is not None else None,
-            })
+            }))
             return PhaseResult(
                 phase="geodetic",
                 success=False,
@@ -413,7 +430,7 @@ class GeodeticGatekeeper(PipelinePhase):
         crs_meta.source_datum = next(
             (z.name for z in self.jurisdiction if z.epsg == epsg), crs_meta.source_datum
         )
-        self.audit.log("crs_inferred", {
+        self.audit.log("crs_inferred", self._audit_payload({
             "epsg": epsg,
             "source": source,
             "confidence": confidence,
@@ -423,7 +440,7 @@ class GeodeticGatekeeper(PipelinePhase):
                 for c in candidates
             ],
             "reason": reason,
-        })
+        }))
 
     def _read_operator_resolution(self, item_id: str, output_dir: Path) -> dict | None:
         path = Path(output_dir) / f"{item_id}_crs_resolution.json"
@@ -481,13 +498,13 @@ class GeodeticGatekeeper(PipelinePhase):
                 output_dir=str(output_dir),
             )
 
-        self.audit.log("crs_quarantined", {
+        self.audit.log("crs_quarantined", self._audit_payload({
             "item_id": item_id,
             "filename": filename,
             "candidates": candidates,
             "status": result.status.value,
             "reason": result.reason,
-        })
+        }))
 
     def _extract_crs(self, las: laspy.LasData, path: Path) -> CRSMetadata:
         meta = CRSMetadata(epsg_code=0)
@@ -521,10 +538,16 @@ class GeodeticGatekeeper(PipelinePhase):
                 f"EPSG:{meta.epsg_code} not in allowed CRS list: {self.allowed_epsg}"
             )
 
-        meta.geoid_model = self.geoid_model
+        meta.epoch = self.config.get("required_epoch")
+
+        declared_geoid = self._read_declared_geoid(path)
+        geoid_errors, resolved_geoid = self._validate_geoid(path, declared_geoid)
+        errors.extend(geoid_errors)
+        if resolved_geoid is not None:
+            meta.geoid_model = resolved_geoid
+
         meta.horizontal_unit = self.config.get("elevation_unit", "US_survey_foot")
         meta.vertical_unit = self.config.get("elevation_unit", "US_survey_foot")
-        meta.epoch = self.config.get("required_epoch")
 
         # G-3: unit validation after defaults. Categorical — no silent coercion.
         errors.extend(self._validate_units(meta, path))
@@ -569,7 +592,7 @@ class GeodeticGatekeeper(PipelinePhase):
         def _emit_mismatch(axis: str, declared: str) -> None:
             self.audit.log(
                 "unit_rejected",
-                {
+                self._audit_payload({
                     "file": str(path),
                     "axis": axis,
                     "declared_unit": declared,
@@ -578,7 +601,7 @@ class GeodeticGatekeeper(PipelinePhase):
                     "expected_unit": canonical,
                     "tolerance_ft": self.unit_tolerance_ft,
                     "reason": "unit_mismatch",
-                },
+                }),
             )
 
         if h_unit and h_unit not in allowed_aliases:
@@ -597,13 +620,13 @@ class GeodeticGatekeeper(PipelinePhase):
         if not errors:
             self.audit.log(
                 "unit_validated",
-                {
+                self._audit_payload({
                     "file": str(path),
                     "horizontal_unit": h_unit,
                     "vertical_unit": v_unit,
                     "canonical_unit": canonical,
                     "tolerance_ft": self.unit_tolerance_ft,
-                },
+                }),
             )
 
         return errors
@@ -612,14 +635,96 @@ class GeodeticGatekeeper(PipelinePhase):
         """G-3: canonical metric-rejection audit event."""
         self.audit.log(
             "unit_rejected",
-            {
+            self._audit_payload({
                 "file": str(path),
                 "horizontal_unit": h_unit,
                 "vertical_unit": v_unit,
                 "expected_unit": canonical,
                 "tolerance_ft": self.unit_tolerance_ft,
                 "reason": "metric_not_allowed",
-            },
+            }),
+        )
+
+    @staticmethod
+    def _normalize_geoid(name: str | None) -> str:
+        return (name or "").strip().upper().replace(" ", "").replace("-", "")
+
+    def _proj_runtime_context(self) -> dict[str, str]:
+        """G-8: reproducibility metadata for every geodetic audit payload."""
+        version = getattr(pyproj, "__version__", "unknown")
+        proj_version = getattr(pyproj, "proj_version_str", None)
+        if proj_version is None:
+            proj_version = getattr(pyproj, "PROJ_VERSION_STR", "unknown")
+        return {
+            "pyproj_version": str(version),
+            "proj_version": str(proj_version),
+        }
+
+    def _audit_payload(self, data: dict) -> dict:
+        return {**data, **self._proj_runtime_context()}
+
+    def _read_declared_geoid(self, path: Path) -> str | None:
+        """Optional sidecar ``{stem}_geodetic_meta.json`` with ``geoid_model`` key."""
+        meta_path = path.parent / f"{path.stem}_geodetic_meta.json"
+        if not meta_path.exists():
+            return None
+        try:
+            payload = json.loads(meta_path.read_text())
+        except (json.JSONDecodeError, OSError):
+            return None
+        declared = payload.get("geoid_model")
+        return str(declared) if declared else None
+
+    def _validate_geoid(
+        self, path: Path, declared: str | None
+    ) -> tuple[list[str], str | None]:
+        """G-7: enforce configured GEOID allowlist; never substitute models."""
+        errors: list[str] = []
+        canonical = self.geoid_model
+        canonical_norm = self._normalize_geoid(canonical)
+
+        if canonical_norm not in self.allowed_geoid_models:
+            errors.append(
+                f"Configured geoid_model {canonical!r} is not on the allowlist: "
+                f"{sorted(self.allowed_geoid_models)}"
+            )
+            return errors, None
+
+        if declared:
+            declared_norm = self._normalize_geoid(declared)
+            if declared_norm not in self.allowed_geoid_models:
+                self._reject_unsupported_geoid(path, declared, canonical)
+                errors.append(
+                    f"Declared geoid {declared!r} is not allowed; "
+                    f"allowlist={sorted(self.allowed_geoid_models)}. "
+                    "No silent substitution."
+                )
+                return errors, None
+
+        self.audit.log(
+            "geoid_validated",
+            self._audit_payload({
+                "file": str(path),
+                "declared_geoid": declared,
+                "resolved_geoid": canonical,
+                "allowlist": sorted(self.allowed_geoid_models),
+            }),
+        )
+        return errors, canonical
+
+    def _reject_unsupported_geoid(
+        self, path: Path, declared: str, canonical: str
+    ) -> None:
+        """G-7: canonical unsupported-geoid audit event."""
+        self.audit.log(
+            "geoid_rejected",
+            self._audit_payload({
+                "file": str(path),
+                "declared_geoid": declared,
+                "expected_geoid": canonical,
+                "allowlist": sorted(self.allowed_geoid_models),
+                "reason": "geoid_not_allowed",
+            }),
         )
 
     def _compute_stats(

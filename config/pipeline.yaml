@@ -16,6 +16,8 @@ geodetic:
     - "EPSG:6430"   # NAD83(2011) Colorado Central (ftUS)
   required_epoch: "2010.0"
   geoid_model: "GEOID18"
+  allowed_geoid_models:
+    - "GEOID18"
   unit_tolerance_ft: 0.01
   reject_on_mixed_datum: true
   reject_on_missing_crs: true
@@ -127,6 +129,8 @@ audit:
     - "crs_out_of_jurisdiction"  # U2: bounds outside every configured zone
     - "unit_validated"
     - "unit_rejected"
+    - "geoid_validated"
+    - "geoid_rejected"
     # Phase 2 (segmentation)
     - "classify"
     - "classify_coded"   # coded .asc/.crd survey exports (authoritative)
