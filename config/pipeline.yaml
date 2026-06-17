@@ -25,6 +25,10 @@ geodetic:
   # to the quarantine UI, out-of-jurisdiction rejects. Default OFF: legacy
   # ingestion behavior is unchanged until the partner zone envelope is provided.
   crs_inference_enabled: false
+  # G-5/G-6: inferred CRS below threshold routes to quarantine UI (port 5050).
+  crs_confidence_threshold: 0.8
+  auto_assign_high_confidence: true
+  quarantine_ui_port: 5050
   # TODO(partner-data): populate with the design partner's single State Plane
   # zone and its projected XY applicability envelope, then set
   # crs_inference_enabled: true. Each entry:

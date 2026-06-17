@@ -48,7 +48,13 @@ class TestRejectMissingCRSFlag:
     def test_false_reject_missing_crs(self, _mk):
         gk = _mk({"reject_on_missing_crs": False})
         assert gk.reject_missing_crs is False
-        # Note: origin/main's simplified gatekeeper does not currently expose
-        # `crs_inference_enabled` or `crs_confidence_threshold` attributes.
-        # Those were intentionally removed; the inference path can be
-        # reintroduced in a later commit if needed.
+
+
+class TestCRSInferenceConfig:
+    def test_crs_inference_enabled_from_config(self, _mk):
+        gk = _mk({"crs_inference_enabled": True})
+        assert gk.crs_inference_enabled is True
+
+    def test_crs_confidence_threshold_from_config(self, _mk):
+        gk = _mk({"crs_confidence_threshold": 0.75})
+        assert gk.crs_confidence_threshold == 0.75
