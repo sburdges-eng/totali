@@ -12,8 +12,8 @@ install_editable_if_present() {
 
 python3 -m pip install --upgrade pip
 
-# Explicit baseline requested for test execution.
-python3 -m pip install pytest scipy pydantic
+# Explicit baseline requested for test execution and survey-automation RC gate (parquet).
+python3 -m pip install pytest scipy pydantic "pyarrow>=16.0.0"
 
 # Install only the requirements.txt entries exercised by the root test suite.
 requirements_file="${ROOT_DIR}/requirements.txt"
