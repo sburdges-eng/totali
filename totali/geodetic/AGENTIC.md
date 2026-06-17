@@ -58,6 +58,7 @@ cases to the quarantine UI on port 5050 for operator decision.
 Existing:
 - `tests/test_geodetic.py`
 - `tests/test_crs_inference.py`
+- `tests/test_geodetic_geoid.py`
 
 Missing / to add:
 - `tests/test_geodetic_deterministic.py` — double-run byte reproducibility.
@@ -71,7 +72,6 @@ Missing / to add:
 ## Open questions / known debts
 - Epoch tolerance: allow `2010.0 ± δ` or exact match only? Default currently exact.
   Decide and test before Phase 2 ships to production.
-- No test yet verifying `pyproj` / PROJ versions are captured in audit payload.
 
 ## Definition of Done
 - All G-1..G-9 plan items implemented with tests.
@@ -81,3 +81,4 @@ Missing / to add:
 
 ## Progress (append-only)
 - 2026-06-17 — G-5/G-6: `crs_confidence_threshold` + `auto_assign_high_confidence` wired in gatekeeper; sub-threshold INFERRED routes to quarantine UI (:5050); `tests/test_geodetic_quarantine_trigger.py` 5 passed.
+- 2026-06-17 — G-7/G-8: `allowed_geoid_models` allowlist + optional `{stem}_geodetic_meta.json` declared geoid; `geoid_validated` / `geoid_rejected` audit events; all geodetic audit payloads carry `pyproj_version` + `proj_version`; `tests/test_geodetic_geoid.py`.

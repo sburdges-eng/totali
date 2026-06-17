@@ -92,7 +92,7 @@ If the task conflicts with a TOTaLi invariant, output exactly: INVARIANT CONFLIC
     { "name": "repl",          "status": "planned",     "language": "Python", "path": "totali/repl/",          "deps": ["audit","cad_shielding","linting"] },
     { "name": "dwg_tool_parser","status": "stub",       "language": "Python+C++", "path": "dwg-tool-parser/",  "deps": ["cad_shielding"] }
   ],
-  "current_task_id": "G-7",
+  "current_task_id": "G-9",
   "completed_tasks": [],
   "constraints": [
     "No undocumented libraries",
@@ -254,7 +254,7 @@ CURRENT MODULE CONTEXT
   ],
   "current_generation": {
     "current_module": "geodetic",
-    "current_plan_step": "G-7",
+    "current_plan_step": "G-9",
     "validation_rules": [
       "must_lint_clean", "must_pass_unit_tests", "must_pass_integration",
       "must_emit_audit_events_for_new_actions",

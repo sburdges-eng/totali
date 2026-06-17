@@ -117,6 +117,8 @@ class _FakeLaspyModule:
 _ensure_stub("pyproj", {
     "CRS": _FakeCRS,
     "Transformer": _FakeTransformer,
+    "__version__": "3.7.2",
+    "proj_version_str": "9.5.1",
 })
 _ensure_stub("pyproj.exceptions", {"CRSError": type("CRSError", (Exception,), {})})
 
