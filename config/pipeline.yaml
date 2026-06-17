@@ -20,6 +20,17 @@ geodetic:
   reject_on_mixed_datum: true
   reject_on_missing_crs: true
   elevation_unit: "US_survey_foot"
+  # U2: CRS inference + quarantine. When enabled, a missing/undeclared CRS is
+  # inferred from coordinate bounds against `jurisdiction_zones`; ambiguity routes
+  # to the quarantine UI, out-of-jurisdiction rejects. Default OFF: legacy
+  # ingestion behavior is unchanged until the partner zone envelope is provided.
+  crs_inference_enabled: false
+  # TODO(partner-data): populate with the design partner's single State Plane
+  # zone and its projected XY applicability envelope, then set
+  # crs_inference_enabled: true. Each entry:
+  #   { epsg: <allowed EPSG>, name: <zone>, xy_min: [E, N], xy_max: [E, N] }
+  # Envelopes are jurisdiction data we don't have yet — do NOT invent values.
+  jurisdiction_zones: []
 
 # Phase 2: ML Segmentation
 segmentation:
@@ -108,6 +119,8 @@ audit:
     - "ingest"
     - "transform"
     - "crs_inferred"
+    - "crs_quarantined"          # U2: ambiguous CRS routed to quarantine
+    - "crs_out_of_jurisdiction"  # U2: bounds outside every configured zone
     - "unit_validated"
     - "unit_rejected"
     # Phase 2 (segmentation)
