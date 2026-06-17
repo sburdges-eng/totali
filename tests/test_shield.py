@@ -227,3 +227,34 @@ class TestPhaseRun:
         manifest = result.data["manifest"]
         for entity in manifest.get("entities", []):
             assert entity["status"] == "DRAFT"
+
+
+class TestQuarantineExclusion:
+    """C-2: unhealable geometry is excluded from the deliverable, not just counted."""
+
+    def test_heal_geometry_drops_quarantined_in_place(self, shield):
+        good = np.array([[0.0, 0.0, 0.0], [1.0, 1.0, 0.0]])
+        bad_poly = np.array([[0.0, 0.0], [1.0, 1.0]])  # 2-vertex polygon: unhealable
+        ext = ExtractionResult(breaklines=[good], building_footprints=[bad_poly])
+        report = shield._heal_geometry(ext)
+        assert len(ext.breaklines) == 1, "healthy breakline retained"
+        assert len(ext.building_footprints) == 0, "unhealable polygon excluded"
+        assert report.quarantined_count >= 1
+
+    @patch("totali.cad_shielding.shield.CADShield._write_dxf")
+    def test_unhealable_polyline_absent_from_written_dxf(
+        self, mock_write, shield, tmp_output, sample_classification
+    ):
+        mock_write.side_effect = lambda ext, path, ctx: shield._write_dxf_manual(ext, path, ctx)
+        good = np.array([[0.0, 0.0, 0.0], [1.0, 1.0, 0.0], [2.0, 2.0, 0.0]])
+        bad = np.array([[0.0, 0.0, 0.0]])  # 1 vertex: unhealable
+        ext = ExtractionResult(breaklines=[good, bad])
+        ctx = PipelineContext(
+            input_path="/f.las", output_dir=tmp_output, extraction=ext,
+            crs=CRSMetadata(epsg_code=2231, is_valid=True),
+            stats=PointCloudStats(point_count=3), input_hash="x",
+        )
+        result = shield.run(ctx)
+        # The unhealable breakline never reaches the writer.
+        assert len(ext.breaklines) == 1
+        assert result.data["healing"].quarantined_count >= 1
