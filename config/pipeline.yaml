@@ -125,8 +125,10 @@ audit:
     - "unit_rejected"
     # Phase 2 (segmentation)
     - "classify"
+    - "classify_coded"   # coded .asc/.crd survey exports (authoritative)
     # Phase 3 (extraction)
     - "extract"
+    - "extract_coded"    # coded survey → DXF point placement
     # Phase 4 (cad_shielding)
     - "heal"
     - "insert"

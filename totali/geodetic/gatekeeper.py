@@ -7,6 +7,7 @@ Rejects ambiguous inputs. Applies PROJ-based transformations.
 
 import hashlib
 import json
+import os
 from pathlib import Path
 
 import numpy as np
@@ -14,6 +15,9 @@ import laspy
 from pyproj import CRS, Transformer
 from pyproj.exceptions import CRSError
 
+from totali.fieldcodes import DESCRIPTIONS_PATH_ENV, FLD_PATH_ENV, load_field_codes
+from totali.pipeline.input_kind import is_coded_survey_input
+from totali.segmentation.dataset import parse_asc
 from totali.pipeline.models import (
     PhaseResult, CRSMetadata, PointCloudStats
 )
@@ -68,6 +72,11 @@ class GeodeticGatekeeper(PipelinePhase):
 
     def run(self, context: PipelineContext) -> PhaseResult:
         input_path = Path(context.input_path)
+        if is_coded_survey_input(input_path):
+            return self._run_coded_survey(context, input_path)
+        return self._run_las(context, input_path)
+
+    def _run_las(self, context: PipelineContext, input_path: Path) -> PhaseResult:
         output_dir = Path(context.output_dir)
 
         # Read point cloud
@@ -155,6 +164,130 @@ class GeodeticGatekeeper(PipelinePhase):
                 "input_hash": input_hash,
             },
             output_files=[out_path, report_path],
+        )
+
+    def _run_coded_survey(self, context: PipelineContext, input_path: Path) -> PhaseResult:
+        """Ingest a Carlson ``.asc``/``.crd`` export (N,E,Z + field code).
+
+        Coded exports carry no LAS CRS metadata; the project ``allowed_crs`` is
+        treated as the declared CRS. Bounds are still validated against the
+        jurisdiction allowlist when CRS inference is enabled.
+        """
+        output_dir = Path(context.output_dir)
+        fld_path = self.config.get("fieldcode_fld") or os.environ.get(FLD_PATH_ENV)
+        if not fld_path:
+            return PhaseResult(
+                phase="geodetic",
+                success=False,
+                message=(
+                    f"coded survey input requires geodetic.fieldcode_fld or {FLD_PATH_ENV}"
+                ),
+            )
+
+        desc_path = self.config.get("fieldcode_descriptions") or os.environ.get(
+            DESCRIPTIONS_PATH_ENV
+        )
+        table = load_field_codes(fld_path, desc_path)
+        labeled = parse_asc(input_path, table)
+        if not labeled:
+            return PhaseResult(
+                phase="geodetic",
+                success=False,
+                message="No survey points parsed from coded export",
+            )
+
+        if not self.allowed_epsg or self.allowed_epsg[0] is None:
+            return PhaseResult(
+                phase="geodetic",
+                success=False,
+                message="allowed_crs must declare the project CRS for coded survey input",
+            )
+
+        epsg = self.allowed_epsg[0]
+        crs_meta = CRSMetadata(
+            epsg_code=epsg,
+            is_valid=True,
+            geoid_model=self.geoid_model,
+            horizontal_unit=self.config.get("elevation_unit", "US_survey_foot"),
+            vertical_unit=self.config.get("elevation_unit", "US_survey_foot"),
+            epoch=self.config.get("required_epoch"),
+            source_datum=next(
+                (z.name for z in self.jurisdiction if z.epsg == epsg), None
+            ),
+        )
+
+        # State Plane convention: X=easting, Y=northing, Z=elevation.
+        points_xyz = np.array(
+            [[p.easting, p.northing, p.elevation] for p in labeled],
+            dtype=np.float64,
+        )
+        stats = PointCloudStats(
+            point_count=len(labeled),
+            bounds_min=points_xyz.min(axis=0),
+            bounds_max=points_xyz.max(axis=0),
+            has_rgb=False,
+            has_intensity=False,
+            has_classification=False,
+            source_file=str(input_path),
+            crs=crs_meta,
+        )
+
+        if self.crs_inference_enabled:
+            routed = self._resolve_via_inference(
+                crs_meta, stats, input_path, output_dir
+            )
+            if routed is not None:
+                return routed
+
+        input_hash = self._hash_file(input_path)
+        self.audit.log("ingest", {
+            "file": str(input_path),
+            "sha256": input_hash,
+            "point_count": stats.point_count,
+            "input_kind": "coded_survey",
+            "crs": f"EPSG:{crs_meta.epsg_code}",
+            "bounds_min": stats.bounds_min.tolist(),
+            "bounds_max": stats.bounds_max.tolist(),
+        })
+
+        report_path = output_dir / f"{input_path.stem}_geodetic_report.json"
+        report = {
+            "input_file": str(input_path),
+            "input_hash": input_hash,
+            "input_kind": "coded_survey",
+            "crs": {
+                "epsg": crs_meta.epsg_code,
+                "epoch": crs_meta.epoch,
+                "geoid": crs_meta.geoid_model,
+                "h_unit": crs_meta.horizontal_unit,
+                "v_unit": crs_meta.vertical_unit,
+                "source": "project_allowed_crs",
+            },
+            "point_count": stats.point_count,
+            "bounds": {
+                "min": stats.bounds_min.tolist(),
+                "max": stats.bounds_max.tolist(),
+            },
+            "transform_applied": False,
+            "validation_passed": True,
+        }
+        with open(report_path, "w") as f:
+            json.dump(report, f, indent=2)
+
+        return PhaseResult(
+            phase="geodetic",
+            success=True,
+            message="Coded survey ingested with project CRS",
+            data={
+                "points_xyz": points_xyz,
+                "las": None,
+                "crs": crs_meta,
+                "stats": stats,
+                "input_hash": input_hash,
+                "input_kind": "coded_survey",
+                "coded_points": labeled,
+            },
+            output_files=[report_path],
         )
 
     # ------------------------------------------------------------------

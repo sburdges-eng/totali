@@ -50,8 +50,10 @@ class PipelineContext(BaseModel):
 
     input_path: str
     output_dir: Path
+    input_kind: str | None = None
 
     points_xyz: np.ndarray | None = None
+    coded_survey_points: list | None = None
     las: Any = None
     crs: CRSMetadata | None = None
     stats: PointCloudStats | None = None

@@ -13,6 +13,7 @@ from typing import Optional
 from totali.pipeline.models import PipelineResult, PhaseResult
 from totali.pipeline.context import PipelineConfig, PipelineContext
 from totali.audit.logger import AuditLogger
+from totali.pipeline.input_kind import is_coded_survey_input
 
 
 PHASE_ORDER = ["geodetic", "segment", "extract", "shield", "lint"]
@@ -31,6 +32,7 @@ class PipelineOrchestrator:
         # Initialize phase processors
         from totali.geodetic.gatekeeper import GeodeticGatekeeper
         from totali.segmentation.classifier import PointCloudClassifier
+        from totali.segmentation.coded_classifier_phase import CodedPointClassifier
         from totali.extraction.extractor import DeterministicExtractor
         from totali.cad_shielding.shield import CADShield
         from totali.linting.surveyor_lint import SurveyorLinter
@@ -41,6 +43,7 @@ class PipelineOrchestrator:
             "shield": CADShield(self.config.cad_shielding, audit),
             "lint": SurveyorLinter(self.config.linting, audit),
         }
+        self._coded_segment = CodedPointClassifier(self.config.segmentation, audit)
 
     def run(
         self,
@@ -60,7 +63,7 @@ class PipelineOrchestrator:
         )
 
         for phase_name in phases_to_run:
-            processor = self.phases[phase_name]
+            processor = self._processor_for_phase(phase_name, context)
             self.audit.log("phase_start", {"phase": phase_name})
 
             pt0 = time.time()
@@ -158,6 +161,11 @@ class PipelineOrchestrator:
         ).write(self.audit)
 
         return result
+
+    def _processor_for_phase(self, phase_name: str, context: PipelineContext):
+        if phase_name == "segment" and is_coded_survey_input(context.input_path):
+            return self._coded_segment
+        return self.phases[phase_name]
 
     def _phase_timeout(self, phase_name: str) -> Optional[float]:
         """P-6: resolve per-phase timeout. Order:
