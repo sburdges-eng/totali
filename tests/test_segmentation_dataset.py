@@ -83,6 +83,26 @@ class TestParse:
         assert pts["6"].is_labeled is False
 
 
+class TestCodeExtraction:
+    def test_leading_stake_number_skipped_for_recognized_code(self, tmp_path, table):
+        # FND is in the taxonomy; STK999 (stake number) is not -> code is FND.
+        asc = tmp_path / "stake.asc"
+        asc.write_text(
+            '10,1372350.0,2818560.0,8020.0,STK999 FND 5/8x1" ls1776\n', encoding="utf-8"
+        )
+        pts = parse_asc(asc, table)
+        assert len(pts) == 1
+        assert pts[0].field_code == "FND"
+        assert pts[0].layer == "TOPO"
+
+    def test_falls_back_to_first_token_when_none_recognized(self, tmp_path, table):
+        asc = tmp_path / "unk.asc"
+        asc.write_text("11,1.0,2.0,3.0,STK999 ZZZ notes\n", encoding="utf-8")
+        pts = parse_asc(asc, table)
+        assert pts[0].field_code == "STK999"
+        assert pts[0].layer is None
+
+
 class TestDataset:
     def test_labeled_unknown_partition(self, asc, table):
         ds = build_labeled_dataset([asc], table)

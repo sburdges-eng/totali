@@ -43,9 +43,29 @@ class LabeledPoint:
         return self.layer is not None
 
 
-def _field_code(description: str) -> str:
-    match = _CODE_RE.match(description or "")
-    return match.group(1) if match else ""
+def _tokens(description: str) -> list[str]:
+    """Code-like tokens of a description, left to right (commas treated as spaces)."""
+    out: list[str] = []
+    for raw in (description or "").replace(",", " ").split():
+        match = _CODE_RE.match(raw)
+        if match:
+            out.append(match.group(1))
+    return out
+
+
+def _extract_code(description: str, table: FieldCodeTable) -> str:
+    """The point's field code = first token recognized in the taxonomy.
+
+    Surveyor descriptions often lead with a stake/point number before the real
+    code (e.g. ``STK146284 FRAC ...`` -> ``FRAC``), so we scan left to right and
+    return the first token present in ``table``. If none is recognized, fall back
+    to the first token so the point is still recorded (as unknown/unlabeled).
+    """
+    toks = _tokens(description)
+    for tok in toks:
+        if tok in table:
+            return tok
+    return toks[0] if toks else ""
 
 
 def parse_asc(path: Path | str, table: FieldCodeTable) -> list[LabeledPoint]:
@@ -69,7 +89,7 @@ def parse_asc(path: Path | str, table: FieldCodeTable) -> list[LabeledPoint]:
                 northing, easting, elevation = float(n), float(e), float(z)
             except ValueError:
                 continue  # header row or non-coordinate line
-            code = _field_code(desc)
+            code = _extract_code(desc, table)
             points.append(
                 LabeledPoint(
                     point_id=pid,
