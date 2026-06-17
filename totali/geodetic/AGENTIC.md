@@ -61,7 +61,7 @@ Existing:
 - `tests/test_geodetic_geoid.py`
 
 Missing / to add:
-- `tests/test_geodetic_deterministic.py` — double-run byte reproducibility.
+- `tests/test_geodetic_deterministic.py` — extend for byte-identical `_geodetic_report.json` (partial: unit-event determinism only today).
 
 ## Dependencies
 - **Upstream:** `totali/audit/`, `totali/pipeline/base_phase.py`.
