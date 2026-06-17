@@ -79,4 +79,4 @@ Curation is data-driven, not unit-tested. Required verifications:
 - Dedupe audit + accessibility probe + re-run equivalence checks green.
 
 ## Progress (append-only)
-- _(append dated entries as daily plan closes out)_
+- 2026-06-17 — Day 2 partial: `CURATION_RULES_2026-06-17.md` frozen; pruned 163→10 git-tracked files (Applications/Library/mesh noise removed); `.gitignore` guards re-import.
