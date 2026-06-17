@@ -52,6 +52,32 @@ def _deep_merge(base: dict[str, Any], override: dict[str, Any]) -> dict[str, Any
     return merged
 
 
+def _as_float(value: Any, field: str) -> float:
+    if isinstance(value, (int, float)):
+        return float(value)
+    if isinstance(value, str):
+        try:
+            return float(value)
+        except ValueError as exc:
+            raise ConfigError(f"{field} must be numeric") from exc
+    raise ConfigError(f"{field} must be numeric")
+
+
+def _as_int(value: Any, field: str) -> int:
+    if isinstance(value, bool):
+        raise ConfigError(f"{field} must be an integer")
+    if isinstance(value, int):
+        return value
+    if isinstance(value, float) and value.is_integer():
+        return int(value)
+    if isinstance(value, str):
+        try:
+            return int(value)
+        except ValueError as exc:
+            raise ConfigError(f"{field} must be an integer") from exc
+    raise ConfigError(f"{field} must be an integer")
+
+
 def load_config(path: Path) -> dict[str, Any]:
     raw = yaml.safe_load(path.read_text(encoding="utf-8")) or {}
     if not isinstance(raw, dict):
@@ -59,6 +85,19 @@ def load_config(path: Path) -> dict[str, Any]:
     config = _deep_merge(DEFAULT_CONFIG, raw)
 
     adjustment = config["laser"]["adjustment"]
+    adjustment["max_iterations"] = _as_int(
+        adjustment["max_iterations"], "laser.adjustment.max_iterations"
+    )
+    adjustment["convergence_tol"] = _as_float(
+        adjustment["convergence_tol"], "laser.adjustment.convergence_tol"
+    )
+    adjustment["condition_number_limit"] = _as_float(
+        adjustment["condition_number_limit"], "laser.adjustment.condition_number_limit"
+    )
+    adjustment["svd_rcond"] = _as_float(
+        adjustment["svd_rcond"], "laser.adjustment.svd_rcond"
+    )
+
     if adjustment["max_iterations"] < 1:
         raise ConfigError("laser.adjustment.max_iterations must be >= 1")
     if adjustment["convergence_tol"] <= 0:
@@ -67,6 +106,9 @@ def load_config(path: Path) -> dict[str, Any]:
         raise ConfigError("laser.adjustment.condition_number_limit must be > 0")
 
     rpp = config["laser"]["rpp"]
+    rpp["k95"] = _as_float(rpp["k95"], "laser.rpp.k95")
+    rpp["allowable_base_m"] = _as_float(rpp["allowable_base_m"], "laser.rpp.allowable_base_m")
+    rpp["allowable_ppm"] = _as_float(rpp["allowable_ppm"], "laser.rpp.allowable_ppm")
     if rpp["k95"] <= 0:
         raise ConfigError("laser.rpp.k95 must be > 0")
     if rpp["allowable_base_m"] < 0:
@@ -74,7 +116,11 @@ def load_config(path: Path) -> dict[str, Any]:
     if rpp["allowable_ppm"] < 0:
         raise ConfigError("laser.rpp.allowable_ppm must be >= 0")
 
-    snap_tol = config["encroachment"]["snap_tolerance_m"]
+    snap_tol = _as_float(
+        config["encroachment"]["snap_tolerance_m"],
+        "encroachment.snap_tolerance_m",
+    )
+    config["encroachment"]["snap_tolerance_m"] = snap_tol
     if snap_tol <= 0:
         raise ConfigError("encroachment.snap_tolerance_m must be > 0")
 

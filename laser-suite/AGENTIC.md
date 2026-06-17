@@ -84,4 +84,4 @@ Input bundle (CSVs under `bundle-dir`):
 - `manifest/run_manifest.json` contains tool version, config hash, output SHA-256s.
 
 ## Progress (append-only)
-- _(empty)_
+- 2026-06-17 — config numeric coercion (YAML `1.0e15` strings); adjustment accepts dof==0; pass_case sample gains redundant obs D–B; `python/tests/` 23/23 green.

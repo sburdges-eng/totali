@@ -217,10 +217,19 @@ def run_adjustment(bundle: CanonicalBundle, config: dict[str, Any]) -> Adjustmen
 
     v = last_l - (last_A @ dx)
     dof = last_A.shape[0] - last_A.shape[1]
-    if dof <= 0:
-        raise AdjustmentError("Non-positive degrees of freedom")
+    if dof < 0:
+        raise AdjustmentError("Observation count is less than unknown count")
 
-    sigma0_sq = float((v.T @ last_P @ v) / dof)
+    residual_quad = float(v.T @ last_P @ v)
+    if dof == 0:
+        # Exactly-determined network (e.g. two distance obs fixing one free 2D
+        # station). Posterior sigma0 is undefined; accept when residuals are
+        # negligible and use unit weight for downstream covariance scaling.
+        if residual_quad > (tol * tol):
+            raise AdjustmentError("Exactly determined network with non-zero residuals")
+        sigma0_sq = 1.0
+    else:
+        sigma0_sq = residual_quad / dof
     if not np.isfinite(sigma0_sq) or sigma0_sq < 0:
         raise AdjustmentError("Invalid posterior variance factor")
 
