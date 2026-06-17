@@ -55,6 +55,12 @@ class GeodeticGatekeeper(PipelinePhase):
         # Defaults OFF so legacy ingestion behavior is unchanged.
         self.crs_inference_enabled = config.get("crs_inference_enabled", False)
         self.jurisdiction = build_jurisdiction(config)
+        # G-5/G-6: sub-threshold inferred CRS routes to quarantine instead of
+        # auto-proceeding. ``auto_assign_high_confidence: false`` sends every
+        # inferred CRS to the operator regardless of score.
+        self.crs_confidence_threshold = float(config.get("crs_confidence_threshold", 0.8))
+        self.auto_assign_high_confidence = config.get("auto_assign_high_confidence", True)
+        self.quarantine_ui_port = int(config.get("quarantine_ui_port", 5050))
         self.geoid_model = config.get("geoid_model", "GEOID18")
         # G-3: tolerance carried into unit_rejected audit payloads for
         # downstream elevation-precision checks.
@@ -329,6 +335,28 @@ class GeodeticGatekeeper(PipelinePhase):
 
         if result.status is CRSInferenceStatus.INFERRED:
             cand = result.candidates[0]
+            needs_operator = (
+                not self.auto_assign_high_confidence
+                or cand.confidence < self.crs_confidence_threshold
+            )
+            if needs_operator:
+                self._route_to_quarantine(item_id, filename, stats, output_dir, result)
+                return PhaseResult(
+                    phase="geodetic",
+                    success=False,
+                    message=(
+                        f"CRS inferred below confidence threshold "
+                        f"({cand.confidence:.2f} < {self.crs_confidence_threshold}); "
+                        f"routed to quarantine UI :{self.quarantine_ui_port}: "
+                        f"{result.reason}"
+                    ),
+                    data={
+                        "quarantined": True,
+                        "item_id": item_id,
+                        "confidence": cand.confidence,
+                        "quarantine_ui_port": self.quarantine_ui_port,
+                    },
+                )
             self._apply_inferred(
                 crs_meta, cand.epsg, source="bounds_inference",
                 confidence=cand.confidence, requires_review=True,

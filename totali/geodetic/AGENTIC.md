@@ -82,4 +82,4 @@ Missing / to add:
 - No CRS ever reaches Phase 2 without an audit trail documenting how it was established.
 
 ## Progress (append-only)
-- _(empty)_
+- 2026-06-17 — G-5/G-6: `crs_confidence_threshold` + `auto_assign_high_confidence` wired in gatekeeper; sub-threshold INFERRED routes to quarantine UI (:5050); `tests/test_geodetic_quarantine_trigger.py` 5 passed.
