@@ -42,7 +42,12 @@ class PipelineOrchestrator:
             "lint": SurveyorLinter(self.config.linting, audit),
         }
 
-    def run(self, input_path: str, phase: str = "all") -> PipelineResult:
+    def run(
+        self,
+        input_path: str,
+        phase: str = "all",
+        manual_baseline_sec: Optional[float] = None,
+    ) -> PipelineResult:
         t0 = time.time()
         result = PipelineResult(
             project_id=self.config.project.name
@@ -143,6 +148,15 @@ class PipelineOrchestrator:
         result.extraction = context.extraction
         result.healing = context.healing
         result.duration_sec = time.time() - t0
+
+        # U5: instrument timing. Emit a metrics artifact alongside the audit
+        # record so the pilot baseline (SC2) is measurable. Raw seconds only —
+        # no committed time-savings percentage (KTD5).
+        from totali.pipeline.metrics import RunMetrics
+        RunMetrics.from_pipeline_result(
+            result, manual_baseline_sec=manual_baseline_sec
+        ).write(self.audit)
+
         return result
 
     def _phase_timeout(self, phase_name: str) -> Optional[float]:

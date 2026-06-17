@@ -121,6 +121,14 @@ class CADShield(PipelinePhase):
         dxf_path = output_dir / "totali_draft_output.dxf"
         entity_manifest = self._write_dxf(extraction, dxf_path, context)
 
+        # U4: the DXF deliverable must carry a reference back to the audit chain
+        # (raw input hash + audit log) so the stampable output is verifiable
+        # end-to-end against its chain of custody.
+        entity_manifest["audit_reference"] = {
+            "input_hash": context.input_hash,
+            "audit_log": str(self.audit.log_path),
+        }
+
         # Write entity manifest (chain of custody)
         manifest_path = output_dir / "entity_manifest.json"
         with open(manifest_path, "w") as f:

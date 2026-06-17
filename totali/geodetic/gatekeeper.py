@@ -20,6 +20,11 @@ from totali.pipeline.models import (
 from totali.pipeline.base_phase import PipelinePhase
 from totali.pipeline.context import PipelineContext
 from totali.audit.logger import AuditLogger
+from totali.geodetic.crs_inference import (
+    CRSInferenceStatus,
+    build_jurisdiction,
+    infer_crs,
+)
 
 
 class GeodeticGatekeeper(PipelinePhase):
@@ -40,6 +45,12 @@ class GeodeticGatekeeper(PipelinePhase):
         self.allowed_epsg = [c.to_epsg() for c in self.allowed_crs]
         self.reject_mixed_datum = config.get("reject_on_mixed_datum", True)
         self.reject_missing_crs = config.get("reject_on_missing_crs", True)
+        # U2: opt-in CRS inference. When enabled, a missing/undeclared CRS is
+        # inferred from coordinate bounds against the configured jurisdiction
+        # zones; ambiguity routes to quarantine, out-of-jurisdiction rejects.
+        # Defaults OFF so legacy ingestion behavior is unchanged.
+        self.crs_inference_enabled = config.get("crs_inference_enabled", False)
+        self.jurisdiction = build_jurisdiction(config)
         self.geoid_model = config.get("geoid_model", "GEOID18")
         # G-3: tolerance carried into unit_rejected audit payloads for
         # downstream elevation-precision checks.
@@ -65,15 +76,24 @@ class GeodeticGatekeeper(PipelinePhase):
         # Extract and validate CRS
         crs_meta = self._extract_crs(las, input_path)
 
+        # Compute stats early — CRS inference (U2) needs coordinate bounds, and
+        # stats don't depend on CRS validity.
+        stats = self._compute_stats(las, input_path, crs_meta)
+
+        # U2: no declared/resolvable CRS + inference enabled → infer or route.
+        if crs_meta.epsg_code == 0 and self.crs_inference_enabled:
+            routed = self._resolve_via_inference(
+                crs_meta, stats, input_path, output_dir
+            )
+            if routed is not None:
+                return routed
+
         if not crs_meta.is_valid:
             return PhaseResult(
                 phase="geodetic",
                 success=False,
                 message=f"CRS validation failed: {crs_meta.validation_errors}",
             )
-
-        # Compute stats
-        stats = self._compute_stats(las, input_path, crs_meta)
 
         # Hash input for chain of custody
         input_hash = self._hash_file(input_path)
@@ -136,6 +156,177 @@ class GeodeticGatekeeper(PipelinePhase):
             },
             output_files=[out_path, report_path],
         )
+
+    # ------------------------------------------------------------------
+    # U2: CRS inference + quarantine routing
+    # ------------------------------------------------------------------
+    def _resolve_via_inference(
+        self,
+        crs_meta: CRSMetadata,
+        stats: PointCloudStats,
+        input_path: Path,
+        output_dir: Path,
+    ) -> PhaseResult | None:
+        """Resolve an undeclared CRS. Returns a terminal PhaseResult to halt
+        (quarantine/reject), or ``None`` to proceed (CRS inferred or resolved).
+        """
+        item_id = input_path.stem
+        filename = input_path.name
+
+        # HITL loop closed: honor an operator resolution written back by the
+        # quarantine UI on a prior run rather than re-inferring.
+        resolution = self._read_operator_resolution(item_id, output_dir)
+        if resolution is not None and resolution.get("action") == "confirm":
+            epsg = resolution.get("epsg")
+            if epsg in self.allowed_epsg:
+                self._apply_inferred(
+                    crs_meta, epsg, source="operator_resolution",
+                    confidence=1.0, requires_review=False, candidates=[],
+                    reason="operator confirmed CRS via quarantine UI",
+                )
+                return None
+
+        result = infer_crs(
+            declared_epsg=None,
+            bounds_min=stats.bounds_min,
+            bounds_max=stats.bounds_max,
+            jurisdiction=self.jurisdiction,
+            allowed_epsg=self.allowed_epsg,
+        )
+
+        if result.status is CRSInferenceStatus.INFERRED:
+            cand = result.candidates[0]
+            self._apply_inferred(
+                crs_meta, cand.epsg, source="bounds_inference",
+                confidence=cand.confidence, requires_review=True,
+                candidates=result.candidates, reason=result.reason,
+            )
+            return None
+
+        if result.requires_quarantine:
+            self._route_to_quarantine(item_id, filename, stats, output_dir, result)
+            return PhaseResult(
+                phase="geodetic",
+                success=False,
+                message=f"CRS ambiguous; routed to quarantine: {result.reason}",
+                data={"quarantined": True, "item_id": item_id},
+            )
+
+        if result.is_rejected:
+            self.audit.log("crs_out_of_jurisdiction", {
+                "file": str(input_path),
+                "item_id": item_id,
+                "reason": result.reason,
+                "bounds_min": stats.bounds_min.tolist() if stats.bounds_min is not None else None,
+                "bounds_max": stats.bounds_max.tolist() if stats.bounds_max is not None else None,
+            })
+            return PhaseResult(
+                phase="geodetic",
+                success=False,
+                message=f"CRS out of jurisdiction; rejected: {result.reason}",
+                data={"rejected": True, "item_id": item_id},
+            )
+
+        # MISSING with no candidates → defer to the existing reject-missing path.
+        return None
+
+    def _apply_inferred(
+        self,
+        crs_meta: CRSMetadata,
+        epsg: int,
+        *,
+        source: str,
+        confidence: float,
+        requires_review: bool,
+        candidates: list,
+        reason: str = "",
+    ) -> None:
+        """Promote an inferred/resolved EPSG onto the CRS metadata and audit it.
+
+        The inferred CRS is advisory: `requires_review` rides along so downstream
+        consumers (and the surveyor) know it was not declared by the source data.
+        """
+        crs_meta.epsg_code = epsg
+        crs_meta.is_valid = True
+        crs_meta.validation_errors = []
+        crs_meta.source_datum = next(
+            (z.name for z in self.jurisdiction if z.epsg == epsg), crs_meta.source_datum
+        )
+        self.audit.log("crs_inferred", {
+            "epsg": epsg,
+            "source": source,
+            "confidence": confidence,
+            "requires_review": requires_review,
+            "candidates": [
+                {"epsg": c.epsg, "name": c.name, "confidence": c.confidence}
+                for c in candidates
+            ],
+            "reason": reason,
+        })
+
+    def _read_operator_resolution(self, item_id: str, output_dir: Path) -> dict | None:
+        path = Path(output_dir) / f"{item_id}_crs_resolution.json"
+        if not path.exists():
+            return None
+        try:
+            return json.loads(path.read_text())
+        except (json.JSONDecodeError, OSError):
+            return None
+
+    def _route_to_quarantine(
+        self,
+        item_id: str,
+        filename: str,
+        stats: PointCloudStats,
+        output_dir: Path,
+        result,
+    ) -> None:
+        """Write the authoritative (flask-free) quarantine artifact, best-effort
+        enqueue into a live operator UI, and emit the audit event.
+        """
+        bmin = stats.bounds_min.tolist() if stats.bounds_min is not None else None
+        bmax = stats.bounds_max.tolist() if stats.bounds_max is not None else None
+        candidates = [
+            {"epsg": c.epsg, "name": c.name, "confidence": c.confidence}
+            for c in result.candidates
+        ]
+
+        artifact = Path(output_dir) / f"{item_id}_crs_quarantine.json"
+        artifact.write_text(json.dumps({
+            "item_id": item_id,
+            "filename": filename,
+            "point_count": stats.point_count,
+            "bounds_min": bmin,
+            "bounds_max": bmax,
+            "candidates": candidates,
+            "status": result.status.value,
+            "reason": result.reason,
+        }, indent=2))
+
+        # The JSON artifact above is authoritative and flask-free. The in-memory
+        # UI queue is a best-effort side channel — Flask is an optional dep.
+        try:
+            from totali.quarantine_ui.app import add_to_quarantine
+        except Exception:  # pragma: no cover - flask optional
+            add_to_quarantine = None
+        if add_to_quarantine is not None:
+            add_to_quarantine(
+                item_id=item_id,
+                filename=filename,
+                point_count=stats.point_count,
+                bounds_min=bmin,
+                bounds_max=bmax,
+                candidates=candidates,
+                output_dir=str(output_dir),
+            )
+
+        self.audit.log("crs_quarantined", {
+            "item_id": item_id,
+            "filename": filename,
+            "candidates": candidates,
+            "status": result.status.value,
+            "reason": result.reason,
+        })
 
     def _extract_crs(self, las: laspy.LasData, path: Path) -> CRSMetadata:
         meta = CRSMetadata(epsg_code=0)

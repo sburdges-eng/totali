@@ -28,8 +28,12 @@ from totali.audit.logger import AuditLogger
 @click.option("--output", "output_dir", default="output",
               help="Output directory")
 @click.option("--project-id", default=None, help="Project identifier for audit trail")
+@click.option("--manual-baseline-sec", type=float, default=None,
+              help="U5: wall-clock seconds for the equivalent manual drafting effort, "
+                   "captured into the timing metrics for the pilot baseline (SC2). "
+                   "No time-savings percentage is computed.")
 @click.option("--dry-run", is_flag=True, help="Validate config and inputs without processing")
-def main(input_path, config_path, phase, output_dir, project_id, dry_run):
+def main(input_path, config_path, phase, output_dir, project_id, manual_baseline_sec, dry_run):
     """TOTaLi-Assisted Drafting Pipeline"""
 
     # Load config
@@ -68,7 +72,7 @@ def main(input_path, config_path, phase, output_dir, project_id, dry_run):
     pipeline = PipelineOrchestrator(config.model_dump(), audit, output_path)
 
     try:
-        result = pipeline.run(input_path, phase=phase)
+        result = pipeline.run(input_path, phase=phase, manual_baseline_sec=manual_baseline_sec)
         audit.log("pipeline_complete", {
             "status": "success",
             "outputs": [str(p) for p in result.output_files],
