@@ -5,13 +5,15 @@ Assembles a certification record that references the full defensibility chain
 + board/ALTA fields) and enforces DRAFT-until-certified. ``audit/verify.py``
 (:func:`verify_certification`) validates completeness and tamper-evidence.
 
-ADVISOR-DEPENDENT (OQ2 / KTD4 / scaffold): the concrete *set* of required board
-(design-partner state PLS) + ALTA fields is unknown and MUST be confirmed with
-the partner PLS advisor. :data:`REQUIRED_BOARD_ALTA_FIELDS` is intentionally an
-empty TODO — do NOT invent field names or values here. The mechanism below
-(record structure, chain linkage, the open-item gate, completeness + tamper
-verification) is complete and is tested against a caller-supplied required set;
-only the production field list awaits the advisor.
+ADVISOR-RESOLVED (OQ2 / KTD4): the required board/ALTA field set has been
+confirmed for the design partner's jurisdiction (Colorado). It enforces the
+twelve statutory land-survey-plat elements of C.R.S. § 38-51-106(1) alongside the
+2021 ALTA/NSPS Section 7 certification and the Table A items in scope for the
+LiDAR/drone classifier pipeline (items 4, 5, 7, 8, 11). See :data:`CERT_SCHEMA`
+for the per-field authority citations and :data:`REQUIRED_BOARD_ALTA_FIELDS` for
+the enforced key set; :func:`totali.audit.verify.verify_certification` validates
+completeness against it. Field *values* remain the surveyor's to supply per job;
+this schema fixes which elements a certified Colorado deliverable must carry.
 """
 
 from __future__ import annotations
@@ -24,13 +26,119 @@ from typing import Any, Optional, Sequence
 
 from totali.pipeline.models import GeometryStatus, LintItem
 
-# TODO(advisor / OQ2): replace with the design partner's state board PLS rule
-# fields + the applicable ALTA/NSPS table-A items, confirmed by the PLS advisor.
-# Shipping an empty tuple on purpose — inventing field names would undermine the
-# certification's defensibility (the whole moat). `verify_certification` accepts
-# a caller-supplied required set so the contract is exercisable before the
-# advisor lands.
-REQUIRED_BOARD_ALTA_FIELDS: tuple[str, ...] = ()
+@dataclass(frozen=True)
+class CertField:
+    """One required certification element, with its governing authority.
+
+    ``key`` is the stable field name carried in
+    :attr:`CertificationRecord.board_alta_fields`; ``authority`` is the statutory
+    or standard citation that makes the element mandatory (the defensibility
+    anchor); ``category`` groups by source.
+    """
+
+    key: str
+    authority: str
+    label: str
+    category: str  # "co_plat" | "alta_section7" | "alta_table_a"
+
+
+# Colorado statutory land-survey-plat elements — C.R.S. § 38-51-106(1)(a)-(l).
+# Subsection letters follow the (1)(a)-(l) enumeration; the elements (not the
+# letters) are the binding content and are advisor-confirmed for the partner.
+_CO_PLAT_FIELDS: tuple[CertField, ...] = (
+    CertField("co_plat_boundary_scale_drawing", "C.R.S. § 38-51-106(1)(a)",
+              "Scale drawing of the boundaries of the land parcel", "co_plat"),
+    CertField("co_plat_rights_of_way_easements", "C.R.S. § 38-51-106(1)(b)",
+              "Recorded and apparent rights-of-way and easements (with source), "
+              "or the client's statement electing not to show them", "co_plat"),
+    CertField("co_plat_field_measured_dimensions", "C.R.S. § 38-51-106(1)(c)",
+              "Field-measured dimensions necessary to establish the boundaries "
+              "on the ground", "co_plat"),
+    CertField("co_plat_responsible_charge_statement", "C.R.S. § 38-51-106(1)(d)",
+              "Statement that the survey was performed by, or under the "
+              "responsible charge of, the professional land surveyor", "co_plat"),
+    CertField("co_plat_basis_of_bearings", "C.R.S. § 38-51-106(1)(e)",
+              "Statement explaining how bearings were determined", "co_plat"),
+    CertField("co_plat_monuments_found_and_set", "C.R.S. § 38-51-106(1)(f)",
+              "Description of all monuments found and set and all control "
+              "monuments used in the survey", "co_plat"),
+    CertField("co_plat_scale_and_bar", "C.R.S. § 38-51-106(1)(g)",
+              "Statement of scale or representative fraction and a bar/graphical "
+              "scale", "co_plat"),
+    CertField("co_plat_north_arrow", "C.R.S. § 38-51-106(1)(h)",
+              "North arrow", "co_plat"),
+    CertField("co_plat_property_description", "C.R.S. § 38-51-106(1)(i)",
+              "Written property description (county, state, section, township, "
+              "range, principal meridian or established subdivision/block/lot)",
+              "co_plat"),
+    CertField("co_plat_signature_and_seal", "C.R.S. § 38-51-106(1)(j)",
+              "Signature and seal of the professional land surveyor", "co_plat"),
+    CertField("co_plat_conflicting_boundary_evidence", "C.R.S. § 38-51-106(1)(k)",
+              "Any conflicting boundary evidence", "co_plat"),
+    CertField("co_plat_linear_units_statement", "C.R.S. § 38-51-106(1)(l)",
+              "Statement defining the linear units used (conversion derived from "
+              "the meter as defined by NIST)", "co_plat"),
+)
+
+# 2021 ALTA/NSPS Section 7 certification statement components.
+_ALTA_SECTION7_FIELDS: tuple[CertField, ...] = (
+    CertField("alta_s7_certified_to", "2021 ALTA/NSPS § 7",
+              "Parties to whom the survey is certified", "alta_section7"),
+    CertField("alta_s7_fieldwork_completion_date", "2021 ALTA/NSPS § 7",
+              "Date of the fieldwork completion stated in the certification",
+              "alta_section7"),
+    CertField("alta_s7_standard_reference", "2021 ALTA/NSPS § 7",
+              "Certification references the 2021 Minimum Standard Detail "
+              "Requirements for ALTA/NSPS Land Title Surveys and the Table A "
+              "items selected", "alta_section7"),
+)
+
+# 2021 ALTA/NSPS Table A optional items in scope for the LiDAR/drone pipeline.
+_ALTA_TABLE_A_FIELDS: tuple[CertField, ...] = (
+    CertField("alta_table_a_4_gross_land_area", "2021 ALTA/NSPS Table A, Item 4",
+              "Gross land area (and other areas if specified by the client)",
+              "alta_table_a"),
+    CertField("alta_table_a_5_vertical_relief", "2021 ALTA/NSPS Table A, Item 5",
+              "Vertical relief with source of information, contour interval, "
+              "datum, and originating benchmark", "alta_table_a"),
+    CertField("alta_table_a_7_building_dimensions", "2021 ALTA/NSPS Table A, Item 7",
+              "Exterior building dimensions at ground level, exterior-footprint "
+              "square footage, and measured building height (7a-c)", "alta_table_a"),
+    CertField("alta_table_a_8_substantial_features", "2021 ALTA/NSPS Table A, Item 8",
+              "Substantial features observed during fieldwork (parking, signs, "
+              "pools, landscaped areas, refuse, etc.)", "alta_table_a"),
+    CertField("alta_table_a_11_underground_utility_evidence",
+              "2021 ALTA/NSPS Table A, Item 11",
+              "Evidence of underground utilities (11a plans/reports; 11b private "
+              "locate markings) with the mandatory client/insurer/lender note",
+              "alta_table_a"),
+)
+
+# Advisor-resolved required certification schema for the partner jurisdiction
+# (Colorado). Ordered: statutory plat elements, then ALTA Section 7, then Table A.
+CERT_SCHEMA: tuple[CertField, ...] = (
+    *_CO_PLAT_FIELDS,
+    *_ALTA_SECTION7_FIELDS,
+    *_ALTA_TABLE_A_FIELDS,
+)
+
+# The enforced key set, derived from CERT_SCHEMA (single source of truth).
+REQUIRED_BOARD_ALTA_FIELDS: tuple[str, ...] = tuple(f.key for f in CERT_SCHEMA)
+
+# Empty-equivalents that do not satisfy a required field.
+_EMPTY_VALUES = (None, "", [], {}, ())
+
+
+def missing_required_fields(
+    record: "CertificationRecord",
+    required: Sequence[str] = REQUIRED_BOARD_ALTA_FIELDS,
+) -> list[str]:
+    """Required field keys absent or empty in ``record.board_alta_fields``."""
+    present = record.board_alta_fields or {}
+    return [
+        k for k in required
+        if k not in present or present[k] in _EMPTY_VALUES
+    ]
 
 # Lint statuses that still need a surveyor decision before certification.
 _OPEN_STATUSES = frozenset({GeometryStatus.DRAFT, GeometryStatus.FLAGGED})
@@ -117,8 +225,9 @@ def certify(
 
     Raises :class:`CertificationBlocked` if any lint item is still open
     (DRAFT/FLAGGED) and no ``defer_reason`` is supplied. Completeness of the
-    board/ALTA field set is NOT enforced here (the required set is advisor-defined
-    and validated separately by :func:`verify_certification`).
+    board/ALTA field set (:data:`REQUIRED_BOARD_ALTA_FIELDS`) is NOT enforced
+    here; it is validated separately by :func:`verify_certification` /
+    :func:`missing_required_fields`, so a record can be assembled incrementally.
     """
     open_items = [i for i in lint_items if i.status in _OPEN_STATUSES]
     if open_items and not defer_reason:
