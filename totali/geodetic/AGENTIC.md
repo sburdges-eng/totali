@@ -60,8 +60,6 @@ Existing:
 - `tests/test_crs_inference.py`
 
 Missing / to add:
-- `tests/test_geodetic_mixed_datum.py` — multi-file mixed-datum rejection.
-- `tests/test_geodetic_quarantine_trigger.py` — low-confidence → UI port open path.
 - `tests/test_geodetic_deterministic.py` — double-run byte reproducibility.
 
 ## Dependencies
