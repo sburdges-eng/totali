@@ -33,6 +33,10 @@ output/
 .local-datasets/
 Datasets/
 
+# AUTOMATICCAD corpus mirrors — system bundles are never project corpus
+AUTOMATICCAD/files/Applications/
+AUTOMATICCAD/files/Library/
+
 # Confidential partner/client survey data — NEVER commit (real PLS field data,
 # client jobs, BLM monuments). Field codes, point clouds, CRD/ASC/PCS exports.
 totali/data/
