@@ -30,6 +30,10 @@ class DeterministicExtractor(PipelinePhase):
 
     def validate_inputs(self, context: PipelineContext) -> tuple[bool, list[str]]:
         errors: list[str] = []
+        if context.input_kind == "coded_survey":
+            if not context.coded_survey_points:
+                errors.append("coded_survey_points missing; run segment phase first")
+            return len(errors) == 0, errors
         if context.points_xyz is None:
             errors.append("points_xyz missing; run geodetic phase first")
         if context.classification is None:
@@ -37,6 +41,8 @@ class DeterministicExtractor(PipelinePhase):
         return len(errors) == 0, errors
 
     def run(self, context: PipelineContext) -> PhaseResult:
+        if context.input_kind == "coded_survey":
+            return self._run_coded(context)
         xyz = context.points_xyz
         classification: ClassificationResult | None = context.classification
         output_dir = Path(context.output_dir)
@@ -147,6 +153,35 @@ class DeterministicExtractor(PipelinePhase):
                 "input_hash": context.input_hash,
             },
             output_files=[report_path],
+        )
+
+    def _run_coded(self, context: PipelineContext) -> PhaseResult:
+        survey_pts = context.coded_survey_points or []
+        if not survey_pts:
+            return PhaseResult(
+                phase="extract",
+                success=False,
+                message="No coded survey points to extract",
+            )
+
+        result = ExtractionResult(coded_survey_points=list(survey_pts))
+        self.audit.log("extract_coded", {
+            "point_count": len(survey_pts),
+            "draft_layers": sorted({p.draft_layer for p in survey_pts}),
+        })
+
+        return PhaseResult(
+            phase="extract",
+            success=True,
+            message=f"Prepared {len(survey_pts)} coded survey points for DXF",
+            data={
+                "extraction": result,
+                "points_xyz": context.points_xyz,
+                "crs": context.crs,
+                "stats": context.stats,
+                "input_hash": context.input_hash,
+                "input_kind": "coded_survey",
+            },
         )
 
     def _build_dtm(self, ground_pts: np.ndarray) -> tuple:

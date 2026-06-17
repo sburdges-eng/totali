@@ -78,9 +78,23 @@ class ClassificationResult:
             )
 
 
+@dataclass(frozen=True)
+class CodedSurveyPoint:
+    """One authoritative survey shot for coded-export → DXF placement."""
+
+    point_id: str
+    x: float
+    y: float
+    z: float
+    draft_layer: str
+    field_code: str
+    firm_layer: Optional[str] = None
+
+
 @dataclass
 class ExtractionResult:
     """Deterministic geometry extraction outputs."""
+    coded_survey_points: list = field(default_factory=list)
     dtm_vertices: Optional[np.ndarray] = None
     dtm_faces: Optional[np.ndarray] = None
     breaklines: list = field(default_factory=list)       # list of Nx3 arrays

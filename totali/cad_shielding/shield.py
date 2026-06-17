@@ -270,6 +270,30 @@ class CADShield(PipelinePhase):
         for layer_name in self.layer_map.values():
             doc.layers.add(layer_name)
 
+        # Coded survey shots (authoritative points on conforming DRAFT layers)
+        for pt in extraction.coded_survey_points:
+            entity_id = self._entity_id()
+            try:
+                if pt.draft_layer not in doc.layers:
+                    doc.layers.add(pt.draft_layer)
+                msp.add_point(
+                    (pt.x, pt.y, pt.z),
+                    dxfattribs={"layer": pt.draft_layer},
+                )
+                entities.append(self._entity_record(
+                    entity_id, "POINT", pt.draft_layer,
+                    np.array([pt.x, pt.y, pt.z]),
+                    confidence=1.0,
+                    provenance={
+                        "point_id": pt.point_id,
+                        "field_code": pt.field_code,
+                        "firm_layer": pt.firm_layer,
+                        "authoritative": True,
+                    },
+                ))
+            except Exception:
+                pass
+
         # DTM as 3DFACE entities
         if extraction.dtm_vertices is not None and extraction.dtm_faces is not None:
             layer = self.layer_map.get("ground_surface", "TOTaLi-SURV-DTM-DRAFT")
