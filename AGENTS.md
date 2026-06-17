@@ -1,5 +1,14 @@
 # AGENTS.md
 
+## Dev-root boundary
+
+This file is project-local. `~/Dev` is only the workspace container; once a session is inside this repo, use this file plus `CLAUDE.md` and project docs as the active rules.
+
+- Scope searches, build commands, tests, terrain-pipeline checks, and dataset validation to this repository unless a sibling repo is explicitly named.
+- Load project-specific code intelligence, schema checks, GIS/database tooling, dataset tooling, and CI checks from this repo's docs only.
+- If work touches another folder inside `~/Dev`, switch to that folder's own `AGENTS.md` before editing there.
+- Do not refresh or rely on a `~/Dev`-wide index as the source of truth for this project.
+
 ## Cursor Cloud specific instructions
 
 This is a pure-Python monorepo with four sub-projects. No Docker, Node.js, or external services are required for development.
