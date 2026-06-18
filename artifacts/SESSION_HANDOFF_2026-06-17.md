@@ -219,3 +219,21 @@ From `AGENTIC_COMPLETION_PLAN.md` §1 — both lanes enforce:
 **CAD platform:** TOTaLi `external/` contracts have live auracad + L4L adapters (not stubs); InGENeer can orchestrate a survey intent packet into TOTaLi phases; laser-suite + survey-automation feed normalized bundles; AUTOMATICCAD corpus curated and reproducible.
 
 **Orchestration:** Ledger + handoff docs stay current; Heavy/Fast lanes do not duplicate work; halts are explicit with evidence.
+
+---
+
+## 9. U4 / LAS validation status (2026-06-18, honest)
+
+**Claim under test:** "the USGS tile passes the mechanical contract; partner job LAS still pending."
+
+**Evidenced this session:**
+- **Mechanical contract — PASS.** `USGS_CO_SanLuis_8764.las` (26,635 pts) runs the full pipeline end-to-end via `tools/run_partner_las_e2e.py --config config/pipeline_in_person.yaml`: all 5 phases green (`geodetic → segment → extract → shield → lint`), `success=True`, **3,528 DRAFT entities**, `totali_draft_output.dxf` + append-only audit (`.jsonl` + `.metrics.json`) produced. This is the structural/mechanical contract only.
+- **Coded-survey batch (`tools/batch_asc_smoke.py`):** `21-034 export.asc` → PASS (32 entities). `1-1018…asc` and `points.asc` → **halted by the geodetic gate** (coords outside every configured `jurisdiction_zone`). This is the gate working correctly, not a bug — but it means the in-person config's single EPSG:2232 zone (Chaffee bounds) does **not** cover those job sites. See `artifacts/asc_smoke_results_2026-06-18.md`.
+
+**Still PENDING (not validated):**
+1. **Partner's actual job LAS** — not provided/hydrated. The USGS public tile is a stand-in, not partner data.
+2. **Classification quality** — unvalidated. Spike (`artifacts/classifier_spike_2026-06-18.md`): rule baseline 0.70% OA, no ONNX model present, USGS tile has only 2 ASPRS classes → inadequate to validate any classifier (see `Docs/CLASSIFIER_DIRECTION_U1.md`, U1).
+3. **Jurisdiction-zone coverage** — partner job sites beyond the BV_BASE/Chaffee bounds need their zones added before their `.asc`/LAS will pass the geodetic gate.
+
+**Bottom line:** mechanical pipeline contract is demonstrably met on a real LAS; **substantive** validation (real partner job data + classification accuracy + multi-site jurisdiction coverage) is **pending partner inputs**.
+
