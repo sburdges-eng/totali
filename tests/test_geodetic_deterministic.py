@@ -90,3 +90,63 @@ class TestGeodeticReportDeterminism:
         first = self._run_once(tmp_path, las, "a")
         second = self._run_once(tmp_path, las, "b")
         assert first == second
+
+
+class TestCodedSurveyReportDeterminism:
+    """G-9 (coded path): two geodetic runs on the same coded .asc export yield a
+    byte-identical _geodetic_report.json. Complements the LAS-path determinism
+    test above; uses committed fixtures so it is CI-reproducible without the
+    gitignored partner/field-code data."""
+
+    _FIXTURES = Path(__file__).resolve().parent / "fixtures" / "survey_corpus"
+    _ASC = _FIXTURES / "coded_survey_min.asc"
+    _FLD = _FIXTURES / "coded_survey_min.fld"
+
+    _CFG = {
+        "allowed_crs": ["EPSG:2231"],
+        "reject_on_missing_crs": True,
+        "geoid_model": "GEOID18",
+        "elevation_unit": "US_survey_foot",
+        # inference OFF -> allowed_crs[0] is the declared CRS; no jurisdiction
+        # zone needed, keeping the fixture self-contained.
+        "crs_inference_enabled": False,
+        "fieldcode_fld": str(_FLD),
+    }
+
+    @classmethod
+    def _run_once(cls, tmp_path: Path, suffix: str) -> bytes:
+        out = tmp_path / f"out_{suffix}"
+        out.mkdir()
+        audit = AuditLogger(
+            log_dir=str(tmp_path / f"audit_{suffix}"),
+            project_id=f"g9c_{suffix}",
+        )
+        gk = GeodeticGatekeeper(cls._CFG, audit)
+        ctx = PipelineContext(input_path=str(cls._ASC), output_dir=out)
+        result = gk.run(ctx)
+        assert result.success is True, result.message
+        report = out / f"{cls._ASC.stem}_geodetic_report.json"
+        assert report.exists()
+        return report.read_bytes()
+
+    def test_coded_report_byte_identical_across_runs(self, tmp_path):
+        first = self._run_once(tmp_path, "a")
+        second = self._run_once(tmp_path, "b")
+        assert first == second
+
+    def test_coded_report_shape(self, tmp_path):
+        import json
+
+        out = tmp_path / "out"
+        out.mkdir()
+        audit = AuditLogger(log_dir=str(tmp_path / "audit"), project_id="g9c_kind")
+        gk = GeodeticGatekeeper(self._CFG, audit)
+        result = gk.run(PipelineContext(input_path=str(self._ASC), output_dir=out))
+        assert result.success is True, result.message
+        report = json.loads(
+            (out / f"{self._ASC.stem}_geodetic_report.json").read_text()
+        )
+        assert report["input_kind"] == "coded_survey"
+        assert report["crs"]["epsg"] == 2231
+        assert report["point_count"] == 3
+        assert report["validation_passed"] is True
