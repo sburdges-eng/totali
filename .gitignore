@@ -40,3 +40,11 @@ AUTOMATICCAD/files/Library/
 # Confidential partner/client survey data — NEVER commit (real PLS field data,
 # client jobs, BLM monuments). Field codes, point clouds, CRD/ASC/PCS exports.
 totali/data/
+
+# Local research exports and large binaries (regenerate locally)
+Docs/*.pdf
+Docs/*.zip
+Docs/*.docx
+Docs/requirements.txt
+artifacts/
+BV_BASE_data_reference_and_test_outcomes.md
