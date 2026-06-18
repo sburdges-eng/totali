@@ -87,7 +87,6 @@ out = Path(os.environ["CODED_OUT"])
 asc = os.environ["BV_BASE_ASC"]
 with open(repo / "config/pipeline_in_person.yaml") as f:
     cfg = yaml.safe_load(f)
-cfg["geodetic"]["crs_inference_enabled"] = False
 audit = AuditLogger(log_dir=str(out / "audit"), project_id="INPERSON-BVBASE")
 r = PipelineOrchestrator(cfg, audit, out).run(asc, phase="all")
 if not r.success:
@@ -107,6 +106,7 @@ LAS_AUDIT="$OUT/audit_las"
 rm -rf "$LAS_OUT" "$LAS_AUDIT"
 mkdir -p "$LAS_AUDIT"
 TOTALI_PARTNER_LAS="$TOTALI_PARTNER_LAS" "$PYTHON" "$REPO/tools/run_partner_las_e2e.py" \
+  --config "$CONFIG" \
   --output-dir "$LAS_OUT" \
   --audit-dir "$LAS_AUDIT" \
   --project-id "INPERSON-LAS" | "$PYTHON" -c "import sys,json; s=json.load(sys.stdin); print('  success:', s['success'], 'entities:', s.get('entity_count')); sys.exit(0 if s['success'] else 1)"

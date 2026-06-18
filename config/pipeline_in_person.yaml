@@ -1,5 +1,6 @@
-# In-person demo config: BV_BASE coded survey (EPSG:2232) + USGS LAS (EPSG:26913 inference).
+# In-person demo: BV_BASE coded survey (EPSG:2232) + USGS LAS (EPSG:26913 inference).
 # Geodetic gates ACTIVE. Do not set auto_promote.
+# Field codes: set TOTALI_FIELDCODE_FLD (in_person_demo.sh does this).
 
 project:
   name: "TOTaLi_InPerson"
@@ -8,8 +9,8 @@ project:
 
 geodetic:
   allowed_crs:
-    - "EPSG:2231"
     - "EPSG:2232"
+    - "EPSG:2231"
     - "EPSG:2233"
     - "EPSG:6428"
     - "EPSG:6430"
@@ -27,6 +28,10 @@ geodetic:
   auto_assign_high_confidence: true
   quarantine_ui_port: 5050
   jurisdiction_zones:
+    - epsg: 2232
+      name: "NAD83 / Colorado Central (ftUS) — Buena Vista / Chaffee Co"
+      xy_min: [2780000, 1350000]
+      xy_max: [2840000, 1390000]
     - epsg: 26913
       name: "NAD83 / UTM zone 13N (USGS LPC Colorado)"
       xy_min: [300000, 4100000]
