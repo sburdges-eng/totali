@@ -1165,10 +1165,15 @@ class TestParseInput:
         with pytest.raises(parser.ParseError, match="Unsupported input type"):
             parser.parse_input(bad_file, converter_template=None, sample_limit=25, precision=6)
 
-    def test_dwg_without_converter_raises(self, parser, tmp_path):
+    def test_dwg_without_resolvable_converter_raises(self, parser, tmp_path, monkeypatch):
+        # DP-1: DWG input now uses a built-in LibreDWG dwg2dxf default when one
+        # is resolvable. When NO converter template is given AND no dwg2dxf
+        # binary can be resolved, parse_input must still raise a clear ParseError
+        # naming the override knobs. Force the no-binary case deterministically.
+        monkeypatch.setattr(parser, "resolve_dwg2dxf", lambda: None)
         dwg_file = tmp_path / "file.dwg"
         dwg_file.write_bytes(b"\x00" * 100)
-        with pytest.raises(parser.ParseError, match="converter command"):
+        with pytest.raises(parser.ParseError, match="dwg2dxf"):
             parser.parse_input(dwg_file, converter_template=None, sample_limit=25, precision=6)
 
     def test_nonexistent_file_raises(self, parser, tmp_path):
