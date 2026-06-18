@@ -232,3 +232,54 @@ class TestPhaseRun:
         result = linter.run(ctx)
         for item in result.data["lint_items"]:
             assert item.status == GeometryStatus.DRAFT
+
+
+class TestExportBlockedUntilCertifiedIntegration:
+    """U3: end-to-end DRAFT-until-certified across the REAL lint workflow.
+
+    Existing tests cover export_blocked / promote_to_certified on hand-built
+    items. This wires the actual SurveyorLinter.run() output through the export
+    gate -> review API -> promote path, proving the pieces agree on real items.
+    """
+
+    def test_real_run_blocks_export_until_all_reviewed(
+        self, linter, tmp_output, sample_manifest, sample_classification, audit_logger
+    ):
+        from totali.linting.certification import export_blocked
+
+        ctx = PipelineContext(
+            input_path="/f.las",
+            output_dir=tmp_output,
+            manifest=sample_manifest,
+            extraction=ExtractionResult(qa_flags=[]),
+            classification=sample_classification,
+        )
+        result = linter.run(ctx)
+        items = result.data["lint_items"]
+        assert items, "real lint run should produce at least one item"
+
+        # Fresh run output is DRAFT -> export gate is closed.
+        assert all(i.status == GeometryStatus.DRAFT for i in items)
+        assert export_blocked(items) is True
+        # Promotion is refused while any item is DRAFT.
+        assert (
+            SurveyorLinter.promote_to_certified(
+                items, "PLS Name", "12345", audit_logger
+            )
+            is False
+        )
+
+        # PLS reviews every item via the real review API.
+        for item in items:
+            SurveyorLinter.accept_item(item, "PLS Name", audit_logger, "reviewed")
+
+        # Gate clears; promotion certifies and strips the -DRAFT suffix.
+        assert export_blocked(items) is False
+        assert (
+            SurveyorLinter.promote_to_certified(
+                items, "PLS Name", "12345", audit_logger
+            )
+            is True
+        )
+        assert all(i.status == GeometryStatus.CERTIFIED for i in items)
+        assert not any(i.layer.endswith("-DRAFT") for i in items)

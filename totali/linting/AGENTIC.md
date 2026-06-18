@@ -76,3 +76,4 @@ Missing / to add:
 
 ## Progress (append-only)
 - _(empty)_
+- 2026-06-18 — U3 export-blocked-until-certified INTEGRATION test: drives real SurveyorLinter.run() output through export_blocked -> accept_item -> promote_to_certified (was only unit-tested on hand-built items). tests/test_surveyor_lint.py::TestExportBlockedUntilCertifiedIntegration. Suite green.
