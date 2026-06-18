@@ -1,5 +1,9 @@
 version: "1"
 
+project:
+  qc_profile: "strict"
+  baseline_namespace: "samples-local"
+
 input:
   include_globs:
     - "samples/input/**/*"
@@ -32,6 +36,14 @@ validation:
   max_warning_count: null
   duplicate_point_id_mode: "all_occurrences"
   unmapped_description_skip_categories: []
+  trend_tracking:
+    enabled: true
+    fail_on_spike: true
+    max_warning_delta: 100
+    max_error_delta: 0
+    max_critical_delta: 0
+    baseline_manifest_path: null
+    state_file_path: null
   coordinate_bounds:
     northing:
       min: 0
@@ -46,6 +58,13 @@ validation:
 crd:
   mode: "auto"
   converter_command: null
+  converter_failure_mode: "fatal"
+
+remediation:
+  enabled: false
+  fix_blank_field_codes: false
+  drop_duplicate_tail_blocks: false
+  drop_malformed_footer_rows: false
 
 outputs:
   formats:

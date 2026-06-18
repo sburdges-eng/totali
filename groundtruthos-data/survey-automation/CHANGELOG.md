@@ -40,6 +40,19 @@
 - Removed invalid rows from `.local-datasets/TOTaLi/TEST BRIDGEY.csv` and `.local-datasets/TOTaLi/FGD_Template_With_Preview (4).csv`.
 - Excluded known binary DXF files from production discovery and achieved clean production run `v2-noise-fixed-20260213T092320Z` (`exit_code: 0`).
 
+### v2 completion hardening
+
+- Added dataset snapshot manifests with deterministic per-file SHA256 checksums in `manifest/dataset_snapshot.json`.
+- Added QC trend tracking report `reports/qc_trend.json` with regression-spike gating against last good run baselines.
+- Added project QC profiles (`strict`, `standard`, `legacy`) and moved production exclusions to profile defaults.
+- Added optional parser auto-remediation for blank field codes, duplicate tail blocks, and malformed footer rows.
+- Added `survey-automation doctor` CLI command for environment/config/converter/data-path diagnostics.
+- Expanded golden fixtures with known-bad coverage:
+  - binary DXF quarantine (`validation/golden/project_known_bad_binary_dxf`)
+  - malformed mixed CSV remediation (`validation/golden/project_known_bad_mixed_csv`)
+  - converter edge-case failure path (`validation/golden/project_known_bad_converter_edge`)
+- Added continuous training-run eval gating utility `scripts/eval_gate.py` and thresholds template `config/eval_gate.example.yaml`.
+
 ## v1.0.0 - 2026-02-12
 
 ### Highlights

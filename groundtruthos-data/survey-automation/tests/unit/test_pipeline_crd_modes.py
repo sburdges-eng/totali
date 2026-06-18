@@ -274,6 +274,41 @@ def test_crd_converter_required_with_broken_converter_is_fatal(tmp_path) -> None
     assert any(f.code == "processing_error" for f in result.findings)
 
 
+def test_crd_converter_required_with_quarantine_mode_downgrades_converter_failure(tmp_path) -> None:
+    input_dir = tmp_path / "input"
+    input_dir.mkdir(parents=True, exist_ok=True)
+    (input_dir / "sample.crd").write_bytes(b"\x00\x00New CRD Format2\x00\x00")
+    _write_point_csv(input_dir / "points.csv")
+
+    broken_converter = tmp_path / "broken.sh"
+    broken_converter.write_text(
+        "#!/usr/bin/env bash\n"
+        "set -euo pipefail\n"
+        "echo converter failed >&2\n"
+        "exit 7\n",
+        encoding="utf-8",
+    )
+    broken_converter.chmod(0o755)
+
+    config = deepcopy(DEFAULT_CONFIG)
+    config["input"]["include_globs"] = ["**/*"]
+    config["input"]["exclude_globs"] = []
+    config["crd"]["mode"] = "converter_required"
+    config["crd"]["converter_command"] = f"{broken_converter} {{input}} {{output}}"
+    config["crd"]["converter_failure_mode"] = "quarantine"
+
+    result = run_pipeline(
+        input_dir=input_dir,
+        output_dir=tmp_path / "out-required-quarantine",
+        config=config,
+        run_id="required-quarantine",
+    )
+
+    assert result.exit_code == 2
+    assert any(f.code == "binary_crd_converter_failed" for f in result.findings)
+    assert not any(f.code == "processing_error" for f in result.findings)
+
+
 def test_crd_converter_command_can_expand_environment_template(tmp_path, monkeypatch) -> None:
     input_dir = tmp_path / "input"
     input_dir.mkdir(parents=True, exist_ok=True)

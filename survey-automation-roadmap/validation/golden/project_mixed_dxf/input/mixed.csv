@@ -1,5 +1,0 @@
-Field Code,Layer,Symbol,Linework
-TOP,PNTS,DOT1,YES
-BAD,ROW
-Point#,Northing,Easting,Elevation,Description,DWG Description,DWG Layer,Locked,Group,Category,LS Number
-3,1002.0,2002.0,301.2,TOP SHOULDER,TOP SHOULDER,PNTS,No,,Topographic,

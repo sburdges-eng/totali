@@ -16,6 +16,7 @@ This command enforces:
 2. Documentation path consistency check (`tests/unit/test_docs_paths.py`).
 3. Production config validation (`config/pipeline.prod.yaml`).
 4. Production converter preflight (`check-converter` on production config).
+5. Continuous eval gate (`scripts/eval_gate.py`) using held-out quality/failure-bucket metrics.
 
 ## Release candidate checklist
 
@@ -34,6 +35,7 @@ This command enforces:
 2. `validation/last_validation.md`.
 3. `artifacts/<run-id>/reports/qc_summary.json`.
 4. `artifacts/<run-id>/manifest/run_manifest.json`.
+5. `artifacts/eval_gate_report.json`.
 
 ## Latest local kickoff evidence
 
@@ -61,3 +63,9 @@ This command enforces:
 ## Release notes approval
 
 1. Approved by stakeholder in-session on 2026-02-13.
+
+## Draft release evidence
+
+1. Draft release created on GitHub for tag `v2.0.0` (release id `286036076`).
+2. Draft URL: `https://github.com/sburdges-eng/survey-automation-roadmap/releases/tag/untagged-667af97ce7e78638a171`.
+3. Note: GitHub uses an `untagged-*` URL slug for draft releases; tag binding is `v2.0.0`.

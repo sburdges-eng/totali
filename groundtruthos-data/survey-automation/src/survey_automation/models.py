@@ -101,6 +101,7 @@ class ParseResult:
     dxf_entities: list[DxfEntityRecord] = field(default_factory=list)
     quarantined_rows: list[QuarantinedRow] = field(default_factory=list)
     findings: list[QCFinding] = field(default_factory=list)
+    remediation_row_counts: dict[str, int] = field(default_factory=dict)
 
 
 @dataclass(slots=True)
@@ -111,8 +112,10 @@ class RunArtifacts:
     normalized_dxf_entities_csv: str
     qc_findings_jsonl: str
     qc_summary_json: str
+    qc_trend_json: str
     quarantined_rows_csv: str
     quarantined_files_json: str
+    dataset_snapshot_json: str
     run_manifest_json: str
 
 

@@ -4,7 +4,7 @@ Release date: TBD
 
 ## Scope
 
-`v2.0.0` finalizes PT II hardening work on parser behavior, converter handling, operational gates, and release controls.
+`v2.0.0` finalizes PT II hardening work on parser behavior, converter handling, reproducibility, operational gates, and release controls.
 
 ## Highlights
 
@@ -14,6 +14,10 @@ Release date: TBD
 4. Duplicate point-id findings now support configurable aggregation (`all_occurrences`, `per_point_id`, `within_file`).
 5. New release-candidate gate and checklist enforce pre-release quality controls.
 6. Production warning-noise controls now support category-based unmapped-code skipping and tighter include-glob scope.
+7. Dataset snapshot manifests now record deterministic per-file checksums (`manifest/dataset_snapshot.json`) for reproducible runs across machines.
+8. QC trend tracking compares warning/error deltas against the last good run and can hard-fail regression spikes.
+9. Project-level QC profiles (`strict`/`standard`/`legacy`) and optional auto-remediation remove production-only hardcoded exclusions.
+10. New `survey-automation doctor` command checks environment/config/converter/data-path readiness with actionable fixes.
 
 ## Operational additions
 
@@ -21,12 +25,13 @@ Release date: TBD
 2. Release-candidate gate script: `scripts/v2_release_candidate_gate.sh`
 3. Release-candidate checklist: `docs/release-candidate-checklist.md`
 4. Manual release-candidate workflow: `.github/workflows/v2-release-candidate-gate.yml`
+5. Continuous training-run eval gate script: `scripts/eval_gate.py` (quality, stability, cost/latency, and failure-driven curation checks)
 
 ## Validation evidence (latest local run)
 
 1. Gate command: `scripts/v2_release_candidate_gate.sh`
 2. PT II gate run id: `pt2-gate-20260213T092345Z`
-3. Tests: `55 passed, 1 skipped`
+3. Tests: `67 passed, 1 skipped`
 4. Golden verification overall status: `PASS`
 5. Production profile run: `v2-noise-fixed-20260213T092320Z` (`3723` -> `0` warnings vs baseline)
 

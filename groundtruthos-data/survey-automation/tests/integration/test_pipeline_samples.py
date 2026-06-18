@@ -52,9 +52,16 @@ def test_pipeline_smoke_on_samples(repo_root, tmp_path) -> None:
     assert _count_rows(run_root / "normalized/dxf_entities.csv") >= 2
 
     manifest = json.loads((run_root / "manifest/run_manifest.json").read_text(encoding="utf-8"))
-    assert manifest["tool_version"]
-    assert "warning_threshold" in manifest
-    assert "warning_threshold_exceeded" in manifest
+    summary = json.loads((run_root / "reports/qc_summary.json").read_text(encoding="utf-8"))
+    assert manifest["metadata"]["tool_version"]
+    assert "warning_threshold" in manifest["data"]
+    assert "warning_threshold_exceeded" in manifest["data"]
+    assert "phase_presentation" in summary["data"]
+    assert "phase_presentation" in manifest["data"]
+    assert summary["data"]["phase_presentation"]["ground_truth"]["evidence"]["snapshot_id"].startswith("sha256:")
+    assert summary["data"]["phase_presentation"]["phase_1"]["status"] == "pass"
+    assert manifest["data"]["phase_presentation"]["phase_3"]["evidence"]["exit_code"] == result.exit_code
+    assert manifest["data"]["phase_presentation"]["phase_3"]["status"] == "warning"
 
 
 def test_pipeline_is_deterministic_for_row_order_and_counts(repo_root, tmp_path) -> None:
@@ -89,7 +96,8 @@ def test_pipeline_is_deterministic_for_row_order_and_counts(repo_root, tmp_path)
 
     summary1 = json.loads((root1 / "reports/qc_summary.json").read_text(encoding="utf-8"))
     summary2 = json.loads((root2 / "reports/qc_summary.json").read_text(encoding="utf-8"))
-    assert summary1["findings_by_severity"] == summary2["findings_by_severity"]
-    assert summary1["point_count"] == summary2["point_count"]
-    assert summary1["field_code_rule_count"] == summary2["field_code_rule_count"]
-    assert summary1["dxf_entity_count"] == summary2["dxf_entity_count"]
+    assert summary1["data"]["findings_by_severity"] == summary2["data"]["findings_by_severity"]
+    assert summary1["data"]["point_count"] == summary2["data"]["point_count"]
+    assert summary1["data"]["field_code_rule_count"] == summary2["data"]["field_code_rule_count"]
+    assert summary1["data"]["dxf_entity_count"] == summary2["data"]["dxf_entity_count"]
+    assert summary1["data"]["phase_presentation"] == summary2["data"]["phase_presentation"]

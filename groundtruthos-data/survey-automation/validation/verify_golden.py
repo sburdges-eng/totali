@@ -49,6 +49,10 @@ def main() -> int:
             continue
 
         config = load_config(config_path)
+        # Golden projects are validated in a shared run root; disable trend gating
+        # so baselines do not leak across independent fixtures.
+        config.setdefault("validation", {}).setdefault("trend_tracking", {})["enabled"] = False
+        config["validation"]["trend_tracking"]["fail_on_spike"] = False
         checkpoint = _load_json(checkpoint_path)
         run_id = f"golden-{project.name}"
 
@@ -62,16 +66,21 @@ def main() -> int:
         run_dir = RUN_ROOT / run_id
         qc_summary = _load_json(run_dir / "reports" / "qc_summary.json")
         quarantined_files = _load_json(run_dir / "quarantine" / "quarantined_files.json")
+        qc_summary_data = qc_summary.get("data", qc_summary)
+        quarantined_files_data = quarantined_files.get("data", quarantined_files)
+        quarantined_entries = quarantined_files_data.get("files", [])
+        if not isinstance(quarantined_entries, list):
+            quarantined_entries = []
 
         finding_codes = {finding.code for finding in result.findings}
-        quarantine_reasons = {item["reason"] for item in quarantined_files["files"]}
+        quarantine_reasons = {item["reason"] for item in quarantined_entries if isinstance(item, dict)}
 
         checks = {
             "exit_code": result.exit_code == checkpoint["expected_exit_code"],
-            "point_count": qc_summary["point_count"] == checkpoint["expected_point_count"],
-            "field_code_rule_count": qc_summary["field_code_rule_count"] == checkpoint["expected_field_code_rule_count"],
-            "dxf_entity_count": qc_summary["dxf_entity_count"] == checkpoint["expected_dxf_entity_count"],
-            "quarantined_row_count": qc_summary["quarantined_row_count"] == checkpoint["expected_quarantined_row_count"],
+            "point_count": qc_summary_data["point_count"] == checkpoint["expected_point_count"],
+            "field_code_rule_count": qc_summary_data["field_code_rule_count"] == checkpoint["expected_field_code_rule_count"],
+            "dxf_entity_count": qc_summary_data["dxf_entity_count"] == checkpoint["expected_dxf_entity_count"],
+            "quarantined_row_count": qc_summary_data["quarantined_row_count"] == checkpoint["expected_quarantined_row_count"],
             "quarantined_file_reasons": checkpoint["expected_quarantined_file_reasons"] == sorted(quarantine_reasons),
         }
 
@@ -91,10 +100,10 @@ def main() -> int:
                 "project": project.name,
                 "status": _fmt_bool(project_ok),
                 "exit_code": result.exit_code,
-                "point_count": qc_summary["point_count"],
-                "field_code_rule_count": qc_summary["field_code_rule_count"],
-                "dxf_entity_count": qc_summary["dxf_entity_count"],
-                "quarantined_row_count": qc_summary["quarantined_row_count"],
+                "point_count": qc_summary_data["point_count"],
+                "field_code_rule_count": qc_summary_data["field_code_rule_count"],
+                "dxf_entity_count": qc_summary_data["dxf_entity_count"],
+                "quarantined_row_count": qc_summary_data["quarantined_row_count"],
                 "quarantine_reasons": sorted(quarantine_reasons),
                 "finding_codes": sorted(finding_codes),
                 "checks": checks,

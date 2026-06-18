@@ -40,19 +40,19 @@ def _run_with_warnings(tmp_path, max_warning_count):
 def test_warning_threshold_unset_keeps_behavior(tmp_path) -> None:
     result, manifest = _run_with_warnings(tmp_path, None)
     assert result.exit_code == 2
-    assert manifest["warning_threshold"] is None
-    assert manifest["warning_threshold_exceeded"] is False
+    assert manifest["data"]["warning_threshold"] is None
+    assert manifest["data"]["warning_threshold_exceeded"] is False
 
 
 def test_warning_threshold_zero_marks_exceeded(tmp_path) -> None:
     result, manifest = _run_with_warnings(tmp_path, 0)
     assert result.exit_code == 2
-    assert manifest["warning_threshold"] == 0
-    assert manifest["warning_threshold_exceeded"] is True
+    assert manifest["data"]["warning_threshold"] == 0
+    assert manifest["data"]["warning_threshold_exceeded"] is True
 
 
 def test_warning_threshold_high_not_exceeded(tmp_path) -> None:
     result, manifest = _run_with_warnings(tmp_path, 100)
     assert result.exit_code == 2
-    assert manifest["warning_threshold"] == 100
-    assert manifest["warning_threshold_exceeded"] is False
+    assert manifest["data"]["warning_threshold"] == 100
+    assert manifest["data"]["warning_threshold_exceeded"] is False

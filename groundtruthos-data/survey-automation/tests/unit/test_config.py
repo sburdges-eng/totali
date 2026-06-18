@@ -194,3 +194,163 @@ def test_unmapped_description_skip_categories_must_be_list_of_strings(tmp_path: 
     )
     loaded = load_config(cfg_ok)
     assert loaded["validation"]["unmapped_description_skip_categories"] == ["converted", "legacy"]
+
+
+def test_qc_profile_standard_applies_profile_defaults(tmp_path: Path) -> None:
+    cfg = tmp_path / "profile-standard.yaml"
+    cfg.write_text(
+        "version: '1'\n"
+        "project:\n"
+        "  qc_profile: standard\n"
+        "input:\n"
+        "  include_globs:\n"
+        "    - '**/*'\n",
+        encoding="utf-8",
+    )
+    loaded = load_config(cfg)
+    assert loaded["project"]["qc_profile"] == "standard"
+    assert "TOTaLi/IIII.dxf" in loaded["input"]["exclude_globs"]
+    assert loaded["validation"]["duplicate_point_id_mode"] == "within_file"
+    assert loaded["remediation"]["enabled"] is True
+    assert loaded["remediation"]["drop_duplicate_tail_blocks"] is False
+    assert loaded["remediation"]["drop_malformed_footer_rows"] is False
+
+
+def test_qc_profile_rejects_unknown_value(tmp_path: Path) -> None:
+    cfg = tmp_path / "profile-invalid.yaml"
+    cfg.write_text(
+        "version: '1'\n"
+        "project:\n"
+        "  qc_profile: unsupported\n",
+        encoding="utf-8",
+    )
+    with pytest.raises(ConfigError):
+        load_config(cfg)
+
+
+def test_trend_tracking_thresholds_require_non_negative_integers(tmp_path: Path) -> None:
+    cfg = tmp_path / "trend-invalid.yaml"
+    cfg.write_text(
+        "version: '1'\n"
+        "validation:\n"
+        "  trend_tracking:\n"
+        "    max_warning_delta: -1\n",
+        encoding="utf-8",
+    )
+    with pytest.raises(ConfigError):
+        load_config(cfg)
+
+
+def test_remediation_flags_require_booleans(tmp_path: Path) -> None:
+    cfg = tmp_path / "remediation-invalid.yaml"
+    cfg.write_text(
+        "version: '1'\n"
+        "remediation:\n"
+        "  enabled: 'yes'\n",
+        encoding="utf-8",
+    )
+    with pytest.raises(ConfigError):
+        load_config(cfg)
+
+
+def test_project_baseline_namespace_accepts_string_and_trims(tmp_path: Path) -> None:
+    cfg = tmp_path / "baseline-namespace.yaml"
+    cfg.write_text(
+        "version: '1'\n"
+        "project:\n"
+        "  baseline_namespace: '  prod-main  '\n",
+        encoding="utf-8",
+    )
+    loaded = load_config(cfg)
+    assert loaded["project"]["baseline_namespace"] == "prod-main"
+
+
+def test_project_baseline_namespace_rejects_non_string(tmp_path: Path) -> None:
+    cfg = tmp_path / "baseline-namespace-invalid.yaml"
+    cfg.write_text(
+        "version: '1'\n"
+        "project:\n"
+        "  baseline_namespace: 123\n",
+        encoding="utf-8",
+    )
+    with pytest.raises(ConfigError):
+        load_config(cfg)
+
+
+def test_crd_converter_failure_mode_accepts_known_values(tmp_path: Path) -> None:
+    cfg = tmp_path / "converter-failure-mode-ok.yaml"
+    cfg.write_text(
+        "version: '1'\n"
+        "crd:\n"
+        "  converter_failure_mode: quarantine\n",
+        encoding="utf-8",
+    )
+    loaded = load_config(cfg)
+    assert loaded["crd"]["converter_failure_mode"] == "quarantine"
+
+
+def test_crd_converter_failure_mode_rejects_unknown_value(tmp_path: Path) -> None:
+    cfg = tmp_path / "converter-failure-mode-bad.yaml"
+    cfg.write_text(
+        "version: '1'\n"
+        "crd:\n"
+        "  converter_failure_mode: soft\n",
+        encoding="utf-8",
+    )
+    with pytest.raises(ConfigError):
+        load_config(cfg)
+
+
+def test_presentation_defaults_are_available(tmp_path: Path) -> None:
+    cfg = tmp_path / "presentation-defaults.yaml"
+    cfg.write_text("version: '1'\n", encoding="utf-8")
+    loaded = load_config(cfg)
+    assert loaded["presentation"]["enabled"] is True
+    assert loaded["presentation"]["color_basis"] == "category_config"
+    assert loaded["presentation"]["category_colors"]["config"] == "#0072B2"
+    assert loaded["presentation"]["config_colors"]["qc_profile"]["standard"] == "#56B4E9"
+
+
+def test_presentation_partial_overrides_merge_with_defaults(tmp_path: Path) -> None:
+    cfg = tmp_path / "presentation-overrides.yaml"
+    cfg.write_text(
+        "version: '1'\n"
+        "presentation:\n"
+        "  category_colors:\n"
+        "    data: '#112233'\n"
+        "  config_colors:\n"
+        "    crd_mode:\n"
+        "      text_only: '#123456'\n",
+        encoding="utf-8",
+    )
+    loaded = load_config(cfg)
+    assert loaded["presentation"]["category_colors"]["data"] == "#112233"
+    assert loaded["presentation"]["category_colors"]["config"] == "#0072B2"
+    assert loaded["presentation"]["config_colors"]["crd_mode"]["text_only"] == "#123456"
+    assert loaded["presentation"]["config_colors"]["crd_mode"]["auto"] == "#009E73"
+
+
+def test_presentation_rejects_invalid_hex_color(tmp_path: Path) -> None:
+    cfg = tmp_path / "presentation-invalid-hex.yaml"
+    cfg.write_text(
+        "version: '1'\n"
+        "presentation:\n"
+        "  category_colors:\n"
+        "    config: '#12ZZ34'\n",
+        encoding="utf-8",
+    )
+    with pytest.raises(ConfigError):
+        load_config(cfg)
+
+
+def test_presentation_rejects_unknown_color_keys(tmp_path: Path) -> None:
+    cfg = tmp_path / "presentation-unknown-key.yaml"
+    cfg.write_text(
+        "version: '1'\n"
+        "presentation:\n"
+        "  category_colors:\n"
+        "    custom: '#123456'\n",
+        encoding="utf-8",
+    )
+    with pytest.raises(ConfigError):
+        load_config(cfg)

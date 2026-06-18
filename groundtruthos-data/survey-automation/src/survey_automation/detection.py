@@ -69,7 +69,8 @@ def _looks_binary(data: bytes) -> bool:
 
 
 def classify_dxf(path: Path) -> tuple[str, str]:
-    sample = path.read_bytes()[:512]
+    with path.open("rb") as f:
+        sample = f.read(512)
     if sample.startswith(b"AutoCAD Binary DXF"):
         return "binary_dxf", "binary_dxf_signature"
     if _looks_binary(sample):
@@ -78,7 +79,8 @@ def classify_dxf(path: Path) -> tuple[str, str]:
 
 
 def classify_crd(path: Path) -> tuple[str, str]:
-    sample = path.read_bytes()[:1024]
+    with path.open("rb") as f:
+        sample = f.read(1024)
     if b"New CRD Format2" in sample:
         return "crd_binary", "carlson_binary_crd_signature"
     if _looks_binary(sample):
@@ -95,26 +97,27 @@ def _is_float_token(token: str) -> bool:
 
 
 def classify_text_points(path: Path) -> tuple[str, str]:
-    data = path.read_bytes()
-    if _looks_binary(data[:1024]):
-        return "unsupported", "text_points_binary_payload"
+    with path.open("rb") as f:
+        header = f.read(1024)
+        if _looks_binary(header):
+            return "unsupported", "text_points_binary_payload"
 
     non_empty_lines = 0
     point_like_rows = 0
 
-    text = data.decode("utf-8", errors="replace")
-    for line in text.splitlines():
-        stripped = line.strip()
-        if not stripped or stripped.startswith("#"):
-            continue
+    with path.open("r", encoding="utf-8", errors="replace") as handle:
+        for line in handle:
+            stripped = line.strip()
+            if not stripped or stripped.startswith("#"):
+                continue
 
-        non_empty_lines += 1
-        tokens = [token for token in _TEXT_ROW_SPLIT_RE.split(stripped) if token]
-        if len(tokens) >= 4 and _is_float_token(tokens[1]) and _is_float_token(tokens[2]) and _is_float_token(tokens[3]):
-            point_like_rows += 1
+            non_empty_lines += 1
+            tokens = [token for token in _TEXT_ROW_SPLIT_RE.split(stripped) if token]
+            if len(tokens) >= 4 and _is_float_token(tokens[1]) and _is_float_token(tokens[2]) and _is_float_token(tokens[3]):
+                point_like_rows += 1
 
-        if non_empty_lines >= 20:
-            break
+            if non_empty_lines >= 20:
+                break
 
     if point_like_rows > 0:
         return "crd_text", "text_points_detected"
