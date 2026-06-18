@@ -2098,6 +2098,73 @@ def build_topology(
     }
 
 
+def _executable_file(path: Path) -> bool:
+    return path.is_file() and os.access(str(path), os.X_OK)
+
+
+def _find_vendored_dwg2dxf(start: Path) -> str | None:
+    candidate = start.resolve()
+    if candidate.is_file():
+        candidate = candidate.parent
+    for root in (candidate, *candidate.parents):
+        vendored = root / "vendor" / "libredwg" / "bin" / "dwg2dxf"
+        if _executable_file(vendored):
+            return str(vendored)
+    return None
+
+
+def _git_worktree_roots(start: Path) -> list[Path]:
+    try:
+        completed = subprocess.run(
+            ["git", "-C", str(start), "worktree", "list", "--porcelain"],
+            capture_output=True,
+            text=True,
+            timeout=10,
+        )
+    except (OSError, subprocess.SubprocessError):
+        return []
+
+    if completed.returncode != 0:
+        return []
+
+    roots: list[Path] = []
+    for line in completed.stdout.splitlines():
+        if not line.startswith("worktree "):
+            continue
+        raw_path = line.removeprefix("worktree ").strip()
+        if raw_path:
+            root = Path(raw_path).expanduser()
+            roots.append(root)
+            core_worktree = _gitdir_core_worktree(root)
+            if core_worktree is not None:
+                roots.append(core_worktree)
+    return roots
+
+
+def _gitdir_core_worktree(git_dir: Path) -> Path | None:
+    try:
+        completed = subprocess.run(
+            ["git", "--git-dir", str(git_dir), "config", "--get", "core.worktree"],
+            capture_output=True,
+            text=True,
+            timeout=10,
+        )
+    except (OSError, subprocess.SubprocessError):
+        return None
+
+    if completed.returncode != 0:
+        return None
+
+    raw_path = completed.stdout.strip()
+    if not raw_path:
+        return None
+
+    worktree = Path(raw_path).expanduser()
+    if not worktree.is_absolute():
+        worktree = git_dir / worktree
+    return worktree.resolve()
+
+
 def resolve_dwg2dxf() -> str | None:
     """Return an absolute path to a dwg2dxf binary, or None if not found.
 
@@ -2110,18 +2177,19 @@ def resolve_dwg2dxf() -> str | None:
     """
     # 1. Explicit env override
     env_val = os.getenv("LIBREDWG_DWG2DXF", "").strip()
-    if env_val and Path(env_val).is_file() and os.access(env_val, os.X_OK):
+    if env_val and _executable_file(Path(env_val)):
         return env_val
 
     # 2. Vendored binary — walk up the directory tree
-    candidate = Path(__file__).resolve()
-    for _ in range(10):  # cap at 10 levels to avoid runaway traversal
-        candidate = candidate.parent
-        vendored = candidate / "vendor" / "libredwg" / "bin" / "dwg2dxf"
-        if vendored.is_file() and os.access(str(vendored), os.X_OK):
-            return str(vendored)
-        if candidate == candidate.parent:
-            break
+    script_path = Path(__file__).resolve()
+    vendored = _find_vendored_dwg2dxf(script_path)
+    if vendored:
+        return vendored
+
+    for worktree_root in _git_worktree_roots(script_path.parent):
+        vendored = _find_vendored_dwg2dxf(worktree_root)
+        if vendored:
+            return vendored
 
     # 3. $PATH lookup
     on_path = shutil.which("dwg2dxf")
@@ -2224,7 +2292,6 @@ def convert_dwg_to_dxf_libredwg(
     # dwg2dxf writes <stem>.dxf in cwd; -y overwrites if already present,
     # -o lets us specify an explicit output path.
     command_parts = [dwg2dxf_bin, "-y", "-o", str(output_path), str(input_path)]
-    command_text = " ".join(command_parts)
 
     try:
         completed = subprocess.run(

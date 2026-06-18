@@ -81,3 +81,15 @@ Missing / to add (in this module or `tests/`):
   (resolver precedence + real DWG→DXF→JSON, skipif binary absent); updated
   `test_dwg_parser.py::test_dwg_without_resolvable_converter_raises` to the new
   contract. Suite green: 956 passed / 2 skipped. Still open: DP-4 fuzz, DP-6 round-trip, DP-7 CLI hardening.
+- 2026-06-18 — DP-1 resolver hardening for linked worktrees: `resolve_dwg2dxf()`
+  now checks `git worktree list --porcelain` roots and absorbed-submodule
+  `core.worktree` paths before falling back to `$PATH`, so isolated worktrees
+  can still find the CAD-level vendored LibreDWG instead of a broken operator
+  install. New regression coverage:
+  `test_linked_worktree_finds_cad_level_vendor_before_path` and
+  `test_absorbed_submodule_gitdir_uses_core_worktree_before_path`. Targeted gate:
+  `tests/test_dwg_parser_libredwg.py` → 5 passed. Full gate:
+  `pytest -q` → 958 passed / 2 skipped; integration replacement set
+  (`test_pipeline_e2e.py`, `test_e2e_topo_real.py`, `test_coded_survey_pipeline.py`,
+  `test_adapter_composition_e2e.py`) → 33 passed / 2 skipped. Stale documented
+  gate path `tests/test_integration.py` is absent in this branch.

@@ -58,6 +58,66 @@ class TestResolveDwg2Dxf:
         resolved = parser.resolve_dwg2dxf()
         assert resolved != str(tmp_path / "does-not-exist")
 
+    def test_linked_worktree_finds_cad_level_vendor_before_path(
+        self, parser, tmp_path, monkeypatch
+    ):
+        cad_root = tmp_path / "CAD"
+        main_worktree = cad_root / "projects" / "TOTaLi"
+        vendored = cad_root / "vendor" / "libredwg" / "bin" / "dwg2dxf"
+        vendored.parent.mkdir(parents=True)
+        vendored.write_text("#!/bin/sh\nexit 0\n")
+        vendored.chmod(0o755)
+
+        monkeypatch.delenv("LIBREDWG_DWG2DXF", raising=False)
+        monkeypatch.setattr(parser.shutil, "which", lambda name: "/broken/dwg2dxf")
+
+        class Completed:
+            returncode = 0
+            stdout = f"worktree {main_worktree}\nHEAD abc123\nbranch refs/heads/main\n"
+            stderr = ""
+
+        def fake_run(*args, **kwargs):
+            return Completed()
+
+        monkeypatch.setattr(parser.subprocess, "run", fake_run)
+
+        assert parser.resolve_dwg2dxf() == str(vendored)
+
+    def test_absorbed_submodule_gitdir_uses_core_worktree_before_path(
+        self, parser, tmp_path, monkeypatch
+    ):
+        dev_root = tmp_path / "Dev"
+        git_dir = dev_root / ".git" / "modules" / "TOTaLi"
+        cad_root = dev_root / "CAD"
+        vendored = cad_root / "vendor" / "libredwg" / "bin" / "dwg2dxf"
+        vendored.parent.mkdir(parents=True)
+        vendored.write_text("#!/bin/sh\nexit 0\n")
+        vendored.chmod(0o755)
+
+        monkeypatch.delenv("LIBREDWG_DWG2DXF", raising=False)
+        monkeypatch.setattr(parser.shutil, "which", lambda name: "/broken/dwg2dxf")
+
+        class Completed:
+            def __init__(self, stdout: str):
+                self.returncode = 0
+                self.stdout = stdout
+                self.stderr = ""
+
+        def fake_run(args, *unused_args, **unused_kwargs):
+            if args[0:2] == ["git", "-C"] and args[3:] == [
+                "worktree",
+                "list",
+                "--porcelain",
+            ]:
+                return Completed(f"worktree {git_dir}\nHEAD abc123\n")
+            if args[:3] == ["git", "--git-dir", str(git_dir)]:
+                return Completed("../../../CAD/projects/TOTaLi\n")
+            return Completed("")
+
+        monkeypatch.setattr(parser.subprocess, "run", fake_run)
+
+        assert parser.resolve_dwg2dxf() == str(vendored)
+
 
 class TestLibreDwgDefaultConversion:
     def test_dwg_converted_via_libredwg(self, parser):
