@@ -48,3 +48,20 @@ Docs/*.docx
 Docs/requirements.txt
 artifacts/
 BV_BASE_data_reference_and_test_outcomes.md
+
+# Node / baton UI
+totali-baton/node_modules/
+
+# Runtime audit and reroute logs (local only)
+audit_logs/
+data-reroute/logs/
+laser-suite/artifacts-integration/
+
+# Claude local settings
+.claude/settings.local.json
+
+# Local machine inventory / SSD reroute (never commit paths)
+data-reroute/
+
+# Cross-repo conflict extraction scratch
+tools/extracted_snippets_v2/

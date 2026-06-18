@@ -514,7 +514,7 @@ class GeodeticGatekeeper(PipelinePhase):
         crs_wkt = None
         for vlr in las.vlrs:
             if vlr.record_id == 2112:  # OGC WKT
-                crs_wkt = vlr.record_data.decode("utf-8", errors="ignore").strip("\x00")
+                crs_wkt = vlr.string.strip("\x00")
                 break
 
         if crs_wkt:
