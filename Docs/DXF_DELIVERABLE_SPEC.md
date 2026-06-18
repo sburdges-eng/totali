@@ -69,6 +69,25 @@ Additionally, coded survey shots from a field-coded survey (`.asc`/`.crd` input)
 
 **DXF version:** `R2018` (ezdxf `new("R2018")`). Source: `totali/cad_shielding/shield.py` line 265.
 
+### 3.1 Coded-survey path — field-code layers (`.asc` / `.crd` input)
+
+LAS-driven runs emit only the 10 `layer_mapping` entries above. **Coded-survey runs may emit additional layers** because each field-coded point carries a firm layer from the field-code taxonomy (`totali/fieldcodes`) that is crosswalked into conforming DRAFT names via `totali/cad_shielding/layer_crosswalk.py`.
+
+Entity type for all coded points: `POINT` on the crosswalked DRAFT layer (validated at shield insert time).
+
+| Firm layer (taxonomy) | TOTaLi DRAFT layer | Discipline | Notes |
+|---|---|---|---|
+| `TOPO` | `TOTaLi-SURV-TOPO-DRAFT` | SURV | General topo shots |
+| `SURVEY_MARKER` | `TOTaLi-SURV-MON-DRAFT` | SURV | Monument / found survey markers |
+| *(water-related codes)* | `TOTaLi-SURV-WATER-DRAFT` | SURV | Emitted when field codes map to water features (demo: BV coded track) |
+| `UTILITY` | `TOTaLi-PLAN-UTILITY-DRAFT` | PLAN | Utility linework / points |
+| `WATERLINE` | `TOTaLi-PLAN-WATERLINE-DRAFT` | PLAN | Water-line features |
+| *(other firm layers)* | `TOTaLi-<DISC>-<FEAT>-DRAFT` | varies | Curated map in `FIRM_LAYER_CROSSWALK`; unlisted layers sanitize to a conforming name |
+
+**Demo evidence (2026-06-18):** the BV coded-survey track emitted **14** distinct layers — the 10 `layer_mapping` layers **plus** `TOTaLi-SURV-MON-DRAFT`, `TOTaLi-SURV-TOPO-DRAFT`, `TOTaLi-SURV-WATER-DRAFT`, and `TOTaLi-PLAN-UTILITY-DRAFT`. Partner sign-off required before treating the full coded set as final (see §8 Q11).
+
+Source: `totali/cad_shielding/layer_crosswalk.py`; `totali/segmentation/coded_classifier_phase.py`; `Docs/MEETING_EVIDENCE_PACK_2026-06-18.md` §3.
+
 ---
 
 ## 4. DRAFT vs Certified Promotion Rule
@@ -231,6 +250,8 @@ These questions must be answered at the meeting before the layer standard is tre
 
 10. **Multi-file / tile delivery:** The current pipeline writes a single `totali_draft_output.dxf` per run. If the project area requires tiling (e.g., multiple LAS files per job), what is the expected tiling and file-naming convention for the deliverable set?
 
+11. **Coded-survey layer set (14 vs 10):** The in-person demo emitted 14 layers on the coded-survey track — the 10 `layer_mapping` layers plus four field-code crosswalk layers (`SURV-MON`, `SURV-TOPO`, `SURV-WATER`, `PLAN-UTILITY`, all `-DRAFT`). Are all 14 correct and wanted? What is the authoritative source of truth for field-code → layer mapping — the partner's `.fld` file, a config block, or both?
+
 ---
 
 ## Notes for Maintainer
@@ -243,3 +264,22 @@ The following adjacent issues were observed during research for this document an
 - The `uncertainty_flags` layer (`TOTaLi-QA-FLAGS`) is configured in `layer_mapping` but its geometric representation (point, polygon, leader, or annotation) is not yet defined in the extraction or shielding code.
 - DWG output is a stub (`_FORMAT_STATUS["dwg"] = "stub"`). Any partner requirement for DWG delivery will need a development milestone.
 - The interactive CAD overlay / ghost layer review UI is described in design documents but not yet built (`ROADMAP.md` §3.5). Current review workflow is the `review_worksheet.txt` text file.
+
+
+## 3b. Coded-survey field-code layers (source: `totali/cad_shielding/layer_crosswalk.py`)
+
+> Encodes simulated meeting decision **Q11** (`MEETING_CAPTURE_SHEET_2026-06-18.md` Part A): all coded-survey layers are wanted; the field-code→layer crosswalk is the source of truth. The §3 table above (`cad_shielding.layer_mapping`, 10 layers) covers the **LAS/extraction** path; coded `.asc` surveys additionally resolve field codes to these layers via `FIRM_LAYER_CROSSWALK`:
+
+| Firm/feature | DRAFT layer |
+|---|---|
+| TOPO | `TOTaLi-SURV-TOPO-DRAFT` |
+| CREEK | `TOTaLi-SURV-CREEK-DRAFT` |
+| POND | `TOTaLi-SURV-POND-DRAFT` |
+| CONTROL / SURVEY_MARKER | `TOTaLi-SURV-CTRL-DRAFT` / `TOTaLi-SURV-MON-DRAFT` / `TOTaLi-SURV-MONLS-DRAFT` |
+| REBAR (alum/plastic) | `TOTaLi-SURV-REBARALUM-DRAFT` / `TOTaLi-SURV-REBARPLAS-DRAFT` |
+| UTILITY / UTILPOLE | `TOTaLi-PLAN-UTILITY-DRAFT` / `TOTaLi-PLAN-UTILPOLE-DRAFT` |
+| WATERLINE | `TOTaLi-PLAN-WATERLINE-DRAFT` |
+| BRIDGE / CULVERT / CONC | `TOTaLi-PLAN-BRIDGE-DRAFT` / `TOTaLi-PLAN-CULVERT-DRAFT` / `TOTaLi-PLAN-CONC-DRAFT` |
+| (uncoded) | `TOTaLi-QA-UNCODED` |
+
+All targets are `*-DRAFT` or `TOTaLi-QA-*`. This is **test-locked**: `tests/test_layer_crosswalk.py::test_all_curated_outputs_pass_shield_validator` runs every crosswalk value through `CADShield._validate_layer_mapping`; `tests/test_config_invariants.py` + `tests/test_shield_layer_name_guard.py` lock the §3 `layer_mapping`. No config change was required for Q11 (the 14-layer set already conforms); this section closes the documentation gap the demo surfaced (spec listed 10, system emits 14+).

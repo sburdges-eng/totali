@@ -1,5 +1,7 @@
 # In-person meeting — capture sheet (2026-06-18)
 
+> ⚠️ **SIMULATED DEFAULTS (2026-06-18)** — the columns below are provisional engineering defaults filled to unblock downstream technical work. They are NOT real partner/PLS decisions. Every simulated answer is tagged `[SIM]`. Replace with captured answers at the actual meeting before any production/main use.
+
 Fillable form for the partner + PLS walkthrough. Pair with
 `MEETING_EVIDENCE_PACK_2026-06-18.md` (what we show) and the source specs
 `DXF_DELIVERABLE_SPEC.md` / `PLS_CERTIFICATION_FIELDS.md`. Capture answers inline
@@ -15,17 +17,17 @@ one new question surfaced by the demo run:
 
 | # | Question | Partner decision |
 |---|----------|------------------|
-| Q1 | Layer names final as `TOTaLi-<DISC>-<FEAT>-DRAFT`? | |
-| Q2 | Certified-layer suffix (drop `-DRAFT` vs explicit `-CERT`)? | |
-| Q3 | Block/symbol library required? which blocks? | |
-| Q4 | Color / lineweight standard (by layer)? | |
-| Q5 | Target CAD platform (Civil 3D vs Carlson) + layer-state expectations? | |
-| Q6 | DWG output required, or DXF sufficient for v1? | |
-| Q7 | Annotation/text style requirements? | |
-| Q8 | Occlusion-zone verification protocol? | |
-| Q9 | Coded-shot symbol conventions? | |
-| Q10 | Tiling / sheet convention? | |
-| **Q11 (NEW)** | **Demo emitted 14 coded-survey layers but the spec maps 10. The 4 extra (`SURV-MON`, `SURV-TOPO`, `SURV-WATER`, `PLAN-UTILITY` — all `-DRAFT`) come from field-code→layer mapping, not `cad_shielding.layer_mapping`. Are all 14 correct/wanted? Confirm names + the field-code→layer source of truth.** | |
+| Q1 | Layer names final as `TOTaLi-<DISC>-<FEAT>-DRAFT`? | [SIM] Yes — retain `TOTaLi-<DISC>-<FEAT>-DRAFT` naming convention as final. |
+| Q2 | Certified-layer suffix (drop `-DRAFT` vs explicit `-CERT`)? | [SIM] Drop `-DRAFT` on promote; no explicit `-CERT` suffix (cert suffix = ""). |
+| Q3 | Block/symbol library required? which blocks? | [SIM] Minimal set deferred to v2; v1 ships monument and control-point symbols only. |
+| Q4 | Color / lineweight standard (by layer)? | [SIM] Adopt firm's existing layer color/lineweight standard; specific values TBD by partner. |
+| Q5 | Target CAD platform (Civil 3D vs Carlson) + layer-state expectations? | [SIM] Civil 3D is primary; Carlson secondary; layer states follow Civil 3D conventions. |
+| Q6 | DWG output required, or DXF sufficient for v1? | [SIM] DXF sufficient for v1; DWG output deferred to M4. |
+| Q7 | Annotation/text style requirements? | [SIM] Firm standard text styles apply; no custom TOTaLi styles for v1. |
+| Q8 | Occlusion-zone verification protocol? | [SIM] Occlusion zones flagged on QA layer for manual review by PLS; no auto-resolution. |
+| Q9 | Coded-shot symbol conventions? | [SIM] Coded-shot symbols per field-code map; map is the authoritative source. |
+| Q10 | Tiling / sheet convention? | [SIM] Single-sheet output for v1; multi-sheet tiling deferred. |
+| **Q11 (NEW)** | **Demo emitted 14 coded-survey layers but the spec maps 10. The 4 extra (`SURV-MON`, `SURV-TOPO`, `SURV-WATER`, `PLAN-UTILITY` — all `-DRAFT`) come from field-code→layer mapping, not `cad_shielding.layer_mapping`. Are all 14 correct/wanted? Confirm names + the field-code→layer source of truth.** | [SIM] Yes — all 14 layers wanted; field-code→layer map is the source of truth for MON/TOPO/WATER/UTILITY. |
 
 **Post-meeting encode →** `config` `cad_shielding.layer_mapping` + field-code map updates, with a `tests/test_layer_mapping_contract.py`-style test asserting the agreed layer set.
 
@@ -42,34 +44,34 @@ observation). All 20 are in `REQUIRED_BOARD_ALTA_FIELDS` today.
 ### Colorado statutory plat — C.R.S. § 38-51-106(1)(a)–(l)
 | Field key | Element | Suggested source | PLS: Required? | PLS: Source |
 |-----------|---------|------------------|----------------|-------------|
-| co_plat_boundary_scale_drawing (a) | Boundary scale drawing | pipeline | | |
-| co_plat_rights_of_way_easements (b) | ROW / easements (or election not to show) | PLS (title) | | |
-| co_plat_field_measured_dimensions (c) | Field-measured dimensions | pipeline | | |
-| co_plat_responsible_charge_statement (d) | Responsible-charge statement | PLS | | |
-| co_plat_basis_of_bearings (e) | Basis of bearings | pipeline (from CRS) | | |
-| co_plat_monuments_found_and_set (f) | Monuments found/set + control | pipeline (coded MON) | | |
-| co_plat_scale_and_bar (g) | Scale + bar | pipeline | | |
-| co_plat_north_arrow (h) | North arrow | pipeline | | |
-| co_plat_property_description (i) | Written property description | PLS (legal) | | |
-| co_plat_signature_and_seal (j) | Signature + seal | PLS (sovereign) | | |
-| co_plat_conflicting_boundary_evidence (k) | Conflicting boundary evidence | PLS | | |
-| co_plat_linear_units_statement (l) | Linear units statement | pipeline (elevation_unit) | | |
+| co_plat_boundary_scale_drawing (a) | Boundary scale drawing | pipeline | [SIM] Y | [SIM] pipeline |
+| co_plat_rights_of_way_easements (b) | ROW / easements (or election not to show) | PLS (title) | [SIM] Y | [SIM] PLS (title) |
+| co_plat_field_measured_dimensions (c) | Field-measured dimensions | pipeline | [SIM] Y | [SIM] pipeline |
+| co_plat_responsible_charge_statement (d) | Responsible-charge statement | PLS | [SIM] Y | [SIM] PLS |
+| co_plat_basis_of_bearings (e) | Basis of bearings | pipeline (from CRS) | [SIM] Y | [SIM] pipeline (from CRS) |
+| co_plat_monuments_found_and_set (f) | Monuments found/set + control | pipeline (coded MON) | [SIM] Y | [SIM] pipeline (coded MON) |
+| co_plat_scale_and_bar (g) | Scale + bar | pipeline | [SIM] Y | [SIM] pipeline |
+| co_plat_north_arrow (h) | North arrow | pipeline | [SIM] Y | [SIM] pipeline |
+| co_plat_property_description (i) | Written property description | PLS (legal) | [SIM] Y | [SIM] PLS (legal) |
+| co_plat_signature_and_seal (j) | Signature + seal | PLS (sovereign) | [SIM] Y | [SIM] PLS (sovereign) |
+| co_plat_conflicting_boundary_evidence (k) | Conflicting boundary evidence | PLS | [SIM] Y | [SIM] PLS |
+| co_plat_linear_units_statement (l) | Linear units statement | pipeline (elevation_unit) | [SIM] Y | [SIM] pipeline (elevation_unit) |
 
 ### 2021 ALTA/NSPS § 7
 | Field key | Element | Suggested source | PLS: Required? | PLS: Source |
 |-----------|---------|------------------|----------------|-------------|
-| alta_s7_certified_to | Parties certified to | PLS (client) | | |
-| alta_s7_fieldwork_completion_date | Fieldwork completion date | pipeline (capture) / PLS | | |
-| alta_s7_standard_reference | 2021 standard + Table A items reference | PLS | | |
+| alta_s7_certified_to | Parties certified to | PLS (client) | [SIM] Y | [SIM] PLS (client) |
+| alta_s7_fieldwork_completion_date | Fieldwork completion date | pipeline (capture) / PLS | [SIM] Y | [SIM] pipeline (capture) / PLS |
+| alta_s7_standard_reference | 2021 standard + Table A items reference | PLS | [SIM] Y | [SIM] PLS |
 
 ### 2021 ALTA/NSPS Table A (in-scope items)
 | Field key | Item | Suggested source | PLS: Required? | PLS: Source |
 |-----------|------|------------------|----------------|-------------|
-| alta_table_a_4_gross_land_area | 4 — Gross land area | pipeline (computed) | | |
-| alta_table_a_5_vertical_relief | 5 — Vertical relief/contours/datum | pipeline | | |
-| alta_table_a_7_building_dimensions | 7 — Building dimensions | pipeline (extraction) | | |
-| alta_table_a_8_substantial_features | 8 — Substantial features | PLS (field obs) | | |
-| alta_table_a_11_underground_utility_evidence | 11 — Underground utility evidence | PLS (locate) | | |
+| alta_table_a_4_gross_land_area | 4 — Gross land area | pipeline (computed) | [SIM] Y | [SIM] pipeline (computed) |
+| alta_table_a_5_vertical_relief | 5 — Vertical relief/contours/datum | pipeline | [SIM] Y | [SIM] pipeline |
+| alta_table_a_7_building_dimensions | 7 — Building dimensions | pipeline (extraction) | [SIM] Y | [SIM] pipeline (extraction) |
+| alta_table_a_8_substantial_features | 8 — Substantial features | PLS (field obs) | [SIM] Y | [SIM] PLS (field obs) |
+| alta_table_a_11_underground_utility_evidence | 11 — Underground utility evidence | PLS (locate) | [SIM] Y | [SIM] PLS (locate) |
 
 **Post-meeting encode →** any field the PLS removes from "required" or reclassifies
 updates `REQUIRED_BOARD_ALTA_FIELDS` / `CERT_SCHEMA`; pipeline-sourced fields get
