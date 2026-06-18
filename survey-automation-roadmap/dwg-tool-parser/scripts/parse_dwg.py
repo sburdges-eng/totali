@@ -2098,19 +2098,45 @@ def build_topology(
     }
 
 
-def resolve_dwg2dxf() -> str | None:
-    """Return an absolute path to a dwg2dxf binary, or None if not found.
+def _dwg2dxf_runnable(path: str) -> bool:
+    """Return True only if the dwg2dxf binary at ``path`` actually runs.
 
-    Resolution precedence:
+    Guards against a present-but-broken binary (e.g. a $PATH dwg2dxf whose
+    shared library is missing) being selected over a working one — invoking it
+    mid-convert would abort the parse. Probes ``--version`` with a short timeout.
+    """
+    try:
+        completed = subprocess.run(
+            [path, "--version"],
+            capture_output=True,
+            timeout=10,
+        )
+    except (OSError, subprocess.SubprocessError):
+        return False
+    return completed.returncode == 0
+
+
+def resolve_dwg2dxf() -> str | None:
+    """Return an absolute path to a *runnable* dwg2dxf binary, or None.
+
+    Resolution precedence (first candidate that exists, is executable, AND
+    actually runs ``--version`` wins):
       1. Env var ``LIBREDWG_DWG2DXF`` (absolute path override)
       2. Vendored binary: walk up from this file's directory searching for
          ``vendor/libredwg/bin/dwg2dxf`` (supports both in-repo and sibling
          vendor layouts)
       3. ``dwg2dxf`` on ``$PATH``
+    A present-but-broken candidate is skipped so a working one further down the
+    precedence list can be chosen.
     """
     # 1. Explicit env override
     env_val = os.getenv("LIBREDWG_DWG2DXF", "").strip()
-    if env_val and Path(env_val).is_file() and os.access(env_val, os.X_OK):
+    if (
+        env_val
+        and Path(env_val).is_file()
+        and os.access(env_val, os.X_OK)
+        and _dwg2dxf_runnable(env_val)
+    ):
         return env_val
 
     # 2. Vendored binary — walk up the directory tree
@@ -2118,14 +2144,18 @@ def resolve_dwg2dxf() -> str | None:
     for _ in range(10):  # cap at 10 levels to avoid runaway traversal
         candidate = candidate.parent
         vendored = candidate / "vendor" / "libredwg" / "bin" / "dwg2dxf"
-        if vendored.is_file() and os.access(str(vendored), os.X_OK):
+        if (
+            vendored.is_file()
+            and os.access(str(vendored), os.X_OK)
+            and _dwg2dxf_runnable(str(vendored))
+        ):
             return str(vendored)
         if candidate == candidate.parent:
             break
 
     # 3. $PATH lookup
     on_path = shutil.which("dwg2dxf")
-    if on_path:
+    if on_path and _dwg2dxf_runnable(on_path):
         return on_path
 
     return None

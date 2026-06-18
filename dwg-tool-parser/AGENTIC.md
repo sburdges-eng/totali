@@ -81,3 +81,10 @@ Missing / to add (in this module or `tests/`):
   (resolver precedence + real DWG→DXF→JSON, skipif binary absent); updated
   `test_dwg_parser.py::test_dwg_without_resolvable_converter_raises` to the new
   contract. Suite green: 956 passed / 2 skipped. Still open: DP-4 fuzz, DP-6 round-trip, DP-7 CLI hardening.
+
+- 2026-06-18 — DP-1 hardening: `resolve_dwg2dxf()` now validates each candidate
+  is actually runnable (`_dwg2dxf_runnable` probes `--version`) before selecting
+  it, so a present-but-broken binary (e.g. a `$PATH` dwg2dxf with a missing
+  libredwg dylib) is skipped in favour of a working one (or None). Test:
+  tests/test_dwg_parser_libredwg.py::TestResolverRobustness. Found via a worktree
+  run where ~/.local/bin/dwg2dxf aborted (dyld) while the vendored 0.13.4 worked.

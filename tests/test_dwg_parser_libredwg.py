@@ -88,3 +88,15 @@ class TestLibreDwgDefaultConversion:
                 import shutil as _sh
 
                 _sh.rmtree(temp_dir, ignore_errors=True)
+
+
+class TestResolverRobustness:
+    def test_skips_nonrunnable_binary(self, parser, tmp_path, monkeypatch):
+        # A binary that exists and is executable but FAILS to run (e.g. a broken
+        # dynamic link) must not be selected over a working one or None.
+        broken = tmp_path / "dwg2dxf"
+        broken.write_text("#!/bin/sh\nexit 1\n")
+        broken.chmod(0o755)
+        monkeypatch.setenv("LIBREDWG_DWG2DXF", str(broken))
+        monkeypatch.setattr(parser.shutil, "which", lambda _: None)
+        assert parser.resolve_dwg2dxf() != str(broken)
