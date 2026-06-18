@@ -80,4 +80,6 @@ Missing / to add:
 - Zero `except Exception` blocks that swallow without re-raising or logging.
 
 ## Progress (append-only)
-- _(empty — fill on completion turns)_
+- 2026-04-22 — P-8 CLI wiring: `tests/test_phase_contract.py` 25 passed (5 phases × 5 contract assertions); every phase satisfies the ABC. (ledger: P-8 @ 2026-04-22T03:22:00Z)
+- 2026-04-22 — P-6 timeouts: `ThreadPoolExecutor`-based enforcement with `PhaseTimeout` + `phase_timeout` audit event; `middleware_timeout_sec` live for shield phase; `tests/test_orchestrator_timeout.py` 8 passed. (ledger: P-6 @ 2026-04-22T03:58:00Z)
+- 2026-04-22 — P-4 failure semantics: `validate_inputs` failure + `run()` exception both halt pipeline with `phase_failed` audit event; `tests/test_orchestrator_failure.py` 5 passed. (ledger: P-4 @ 2026-04-22T04:12:00Z)

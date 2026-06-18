@@ -78,4 +78,9 @@ Missing / to add:
 - `totali.audit.verify` is documented in CLAUDE.md and this doc.
 
 ## Progress (append-only)
-- _(empty)_
+- 2026-04-22 — A-4 hash-chain verifier implemented: `tests/test_audit_hash_chain.py` 6 passed (clean chain, tamper detection, determinism). (ledger: A-4 @ 2026-04-22T03:25:00Z)
+- 2026-04-22 — A-4-CLI: `totali.audit.verify` CLI ships; exits 0 on clean log, 3 on tampered log; `tests/test_audit_verify_cli.py` 7 passed. (ledger: A-4-CLI @ 2026-04-22T03:30:00Z)
+- 2026-04-22 — A-5 event allowlist: `logger.py` gains opt-in allowlist with `UnknownAuditEvent`; sequence preserved on rejection; `tests/test_audit_event_allowlist.py` 8 passed. (ledger: A-5 @ 2026-04-22T03:50:00Z)
+- 2026-04-22 — A-7 (partial): truncation/partial-line detection verified; `verify` confirmed read-only; `tests/test_audit_crash_recovery.py` 5 passed. (ledger: A-7-partial @ 2026-04-22T04:16:00Z)
+- 2026-04-22 — A-7 (full): `logger.py` gains fsync-on-write + idempotent `close()` emitting `run_end`; `tests/test_audit_fsync_and_close.py` 8 passed. (ledger: A-7-full @ 2026-04-22T05:35:00Z)
+- 2026-04-22 — A-5 allowlist sync: `config/pipeline.yaml` `audit.log_events` expanded from 10 to 28 entries covering every emit site; `tests/test_audit_events_exhaustive.py` 3 tests enforce drift-detection. (ledger: A-5-allowlist-sync @ 2026-04-22T06:30:00Z)

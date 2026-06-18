@@ -60,4 +60,5 @@ Missing / to add:
 - Default bind is localhost; production config example with auth documented in operations doc.
 
 ## Progress (append-only)
-- _(empty)_
+- 2026-04-22 — Q-5-partial idempotency: second resolve returns not-found (no duplicate side effect); `tests/test_quarantine_ui_idempotent.py` 6 passed. (ledger: Q-5-partial @ 2026-04-22T04:58:00Z)
+- 2026-04-22 — Q-4 audit emission: `app.set_audit_logger()` injects `AuditLogger`; `/api/resolve` emits `crs_resolved` / `crs_rejected_by_operator` with operator identity; `tests/test_quarantine_ui_audit.py` 5 passed. (ledger: Q-4 @ 2026-04-22T06:12:00Z)

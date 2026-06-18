@@ -75,5 +75,6 @@ Missing / to add:
   all events and final summary matches.
 
 ## Progress (append-only)
-- _(empty)_
-- 2026-06-18 — U3 export-blocked-until-certified INTEGRATION test: drives real SurveyorLinter.run() output through export_blocked -> accept_item -> promote_to_certified (was only unit-tested on hand-built items). tests/test_surveyor_lint.py::TestExportBlockedUntilCertifiedIntegration. Suite green.
+- 2026-04-22 — L-4 auto-promote guard: `tests/test_linting_auto_promote_guard.py` 8 passed; config with `auto_promote: true` rejected at load. (ledger: L-4 @ 2026-04-22T03:23:00Z)
+- 2026-04-22 — L-4-hardened: `SurveyorLinter` now raises `AutoPromoteForbidden` when config sets `auto_promote` truthy; integration + guard + lint tests updated; `tests/test_linting_auto_promote_guard.py`, `tests/test_surveyor_lint.py`, `tests/test_integration.py` all pass. (ledger: L-4-hardened @ 2026-04-22T06:10:00Z)
+- 2026-06-18 — U3 export-blocked-until-certified INTEGRATION test: drives real SurveyorLinter.run() output through export_blocked -> accept_item -> promote_to_certified (was only unit-tested on hand-built items). tests/test_surveyor_lint.py::TestExportBlockedUntilCertifiedIntegration. Suite green. (ledger: U3-EXPORT-GATE-INTEGRATION @ 2026-06-18T06:20:00Z)

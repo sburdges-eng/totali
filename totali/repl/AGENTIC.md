@@ -58,4 +58,5 @@ Missing / to add:
 - Transcript + audit parity test green.
 
 ## Progress (append-only)
-- _(empty)_
+- 2026-04-22 — R-1 contracts: `tests/test_repl_contracts.py` 23 passed; schema version, top-level keys, absolute-path, traversal, and metadata scalar validation all covered. (ledger: R-1 @ 2026-04-22T05:37:00Z)
+- 2026-04-22 — REPL module tracked: `totali/repl/{__init__,civil3d_repl,client,contracts,critic}.py` committed; branch self-contained on fresh clone. (ledger: REPL-TRACK @ 2026-04-22T05:50:00Z)

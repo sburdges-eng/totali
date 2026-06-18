@@ -62,4 +62,4 @@ these are runtime helpers with bounded authority.
 - `agents.<name>.enabled: false` is the default in `config/pipeline.yaml`.
 
 ## Progress (append-only)
-- _(empty)_
+- _(no work recorded in completion_ledger.jsonl yet)_

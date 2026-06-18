@@ -48,4 +48,5 @@ removed with the in-process LLM codegen path — see the reconciliation note bel
 - Loader ≥ 95 % covered.
 
 ## Progress (append-only)
-- _(empty)_
+- 2026-04-22 — M-1 ONNX loader: `totali/models/loader.py` created; SHA-256 + manifest validation; missing-file raises; `tests/test_models_loader.py` 9 passed. (ledger: M-1 @ 2026-04-22T05:20:00Z)
+- 2026-04-22 — M-3-partial: `tests/test_models_projection.py` authored (torch-skipped in minimal venv; runs when torch installed). (ledger: M-3-partial @ 2026-04-22T05:21:00Z)

@@ -81,4 +81,6 @@ Missing / to add:
 - Quarantine path exercised by test and produces a readable quarantine sidecar.
 
 ## Progress (append-only)
-- _(empty)_
+- 2026-04-22 — C-3 (initial): config layer-name regex enforced; `tests/test_shield_layer_name_guard.py` 3 passed. (ledger: C-3 @ 2026-04-22T03:24:00Z)
+- 2026-04-22 — C-3 (enforced): `CADShield.__init__` now rejects non-conforming layer names with `NonConformingLayerName`; `tests/test_shield_layer_name_guard.py` expanded to 8 passed. (ledger: C-3-enforced @ 2026-04-22T04:08:00Z)
+- 2026-04-22 — C-2 quarantine path: degenerate input is routed to quarantine and does not reach CAD write; `tests/test_healer_quarantine_path.py` 8 passed. (ledger: C-2 @ 2026-04-22T04:57:00Z)

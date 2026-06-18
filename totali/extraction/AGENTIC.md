@@ -79,4 +79,5 @@ Missing / to add:
 - Artifacts consumed cleanly by `cad_shielding/` shield.run() on golden input.
 
 ## Progress (append-only)
-- _(empty)_
+- 2026-04-22 — E-5-partial determinism: same input produces same `result.data` keys; `tests/test_extractor_determinism.py` 1 passed. (ledger: E-5-partial @ 2026-04-22T04:19:00Z)
+- 2026-04-22 — E-6 unit/threshold discipline: config thresholds reach extractor; `tests/test_extractor_threshold_propagation.py` 14 passed. (ledger: E-6 @ 2026-04-22T05:00:00Z)
