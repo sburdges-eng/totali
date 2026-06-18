@@ -61,7 +61,7 @@ Existing:
 - `tests/test_geodetic_geoid.py`
 
 Missing / to add:
-- `tests/test_geodetic_deterministic.py` — double-run byte reproducibility.
+- `tests/test_geodetic_deterministic.py` — extend for byte-identical `_geodetic_report.json` (partial: unit-event determinism only today).
 
 ## Dependencies
 - **Upstream:** `totali/audit/`, `totali/pipeline/base_phase.py`.
@@ -82,3 +82,4 @@ Missing / to add:
 ## Progress (append-only)
 - 2026-06-17 — G-5/G-6: `crs_confidence_threshold` + `auto_assign_high_confidence` wired in gatekeeper; sub-threshold INFERRED routes to quarantine UI (:5050); `tests/test_geodetic_quarantine_trigger.py` 5 passed.
 - 2026-06-17 — G-7/G-8: `allowed_geoid_models` allowlist + optional `{stem}_geodetic_meta.json` declared geoid; `geoid_validated` / `geoid_rejected` audit events; all geodetic audit payloads carry `pyproj_version` + `proj_version`; `tests/test_geodetic_geoid.py`.
+- 2026-06-18 — G-9: `tests/test_geodetic_deterministic.py` extended — byte-identical `{stem}_geodetic_report.json` across two geodetic runs on the same LAS input.

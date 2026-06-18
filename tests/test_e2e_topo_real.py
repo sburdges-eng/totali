@@ -20,15 +20,17 @@ from __future__ import annotations
 
 import json
 import os
+import subprocess
+import sys
+from pathlib import Path
 
 import pytest
 
-from totali.audit.logger import AuditLogger
-from totali.audit.verify import verify_log
 from totali.cad_shielding.shield import CADShield, UnsupportedCADFormat
-from totali.pipeline.orchestrator import PHASE_ORDER, PipelineOrchestrator
 
 _PARTNER_LAS = os.environ.get("TOTALI_PARTNER_LAS")
+_REPO_ROOT = Path(__file__).resolve().parents[1]
+_RUNNER = _REPO_ROOT / "tools" / "run_partner_las_e2e.py"
 
 
 @pytest.mark.skipif(
@@ -42,41 +44,42 @@ _PARTNER_LAS = os.environ.get("TOTALI_PARTNER_LAS")
 class TestRealPartnerLasE2E:
     """Contract for the un-relaxed, real-data run. Inert until the dataset lands."""
 
-    def _gated_config(self, sample_config: dict) -> dict:
-        cfg = dict(sample_config)
-        cfg["geodetic"] = dict(sample_config["geodetic"])
-        # Gates ACTIVE — the whole point vs. the stub-relaxed E2E. The partner's
-        # real LAS must declare (or allow inference of) a CRS in the allowlist.
-        cfg["geodetic"]["reject_on_missing_crs"] = True
-        cfg["geodetic"]["reject_on_mixed_datum"] = True
-        # TODO(partner-data): populate jurisdiction_zones with the partner zone
-        # envelope and set crs_inference_enabled if the LAS lacks a CRS VLR.
-        return cfg
+    def test_real_las_flows_all_phases_to_stampable_dxf(self, tmp_path):
+        """Subprocess runner — conftest stubs laspy; real LAS needs real laspy."""
+        pytest.importorskip("laspy")
+        pytest.importorskip("pyproj")
+        assert _RUNNER.is_file(), f"missing runner: {_RUNNER}"
 
-    def test_real_las_flows_all_phases_to_stampable_dxf(self, sample_config, tmp_path):
-        cfg = self._gated_config(sample_config)
         out = tmp_path / "out"
-        out.mkdir()
-        audit = AuditLogger(log_dir=str(tmp_path / "audit"), project_id="u4_real")
-        orch = PipelineOrchestrator(cfg, audit, out)
+        audit = tmp_path / "audit"
+        result = subprocess.run(
+            [
+                sys.executable,
+                str(_RUNNER),
+                "--output-dir",
+                str(out),
+                "--audit-dir",
+                str(audit),
+                "--project-id",
+                "u4_real",
+            ],
+            cwd=str(_REPO_ROOT),
+            env={**os.environ, "TOTALI_PARTNER_LAS": _PARTNER_LAS},
+            capture_output=True,
+            text=True,
+            timeout=300,
+        )
+        assert result.returncode == 0, (
+            f"partner LAS E2E exited {result.returncode}; "
+            f"stderr:\n{result.stderr}\nstdout:\n{result.stdout}"
+        )
 
-        result = orch.run(_PARTNER_LAS, phase="all")
-
-        # All five phases ran with gates active.
-        assert [p.phase for p in result.phases] == PHASE_ORDER
-        assert result.success is True, [
-            (p.phase, p.success, p.message) for p in result.phases
-        ]
-
-        # A DXF was produced and carries an audit reference.
-        dxf = out / "totali_draft_output.dxf"
-        assert dxf.exists()
-        manifest = json.loads((out / "entity_manifest.json").read_text())
-        assert manifest["audit_reference"]["input_hash"]
-
-        # The audit chain verifies end-to-end (SC1).
-        ok, errors = verify_log(audit.log_path)
-        assert ok is True, errors
+        summary = json.loads(result.stdout)
+        assert summary["success"] is True
+        assert summary["phase_order_ok"] is True
+        assert summary["dxf_exists"] is True
+        assert summary["audit_verify_ok"] is True
+        assert summary["input_hash"]
 
 
 class TestDwgLoudStub:

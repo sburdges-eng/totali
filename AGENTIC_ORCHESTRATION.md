@@ -273,37 +273,34 @@ duplicate here, read there.
 
 ```json
 {
-  "task_id": "G-7",
+  "task_id": "G-9",
   "module": "geodetic",
   "component": "gatekeeper",
-  "objective": "Enforce GEOID18 allowlist for orthometric heights; reject unsupported geoid models with audit event.",
-  "plan_reference": "totali/geodetic/AGENTIC.md #G-7",
+  "objective": "Byte-reproducible geodetic artifacts for identical input + config across two runs.",
+  "plan_reference": "totali/geodetic/AGENTIC.md #G-9",
   "inputs": {
-    "required_functions": ["GeodeticGatekeeper._validate_geoid", "GeodeticGatekeeper._reject_unsupported_geoid"],
+    "required_functions": ["GeodeticGatekeeper.run", "GeodeticGatekeeper._write_output"],
     "config_section": "geodetic"
   },
   "constraints": [
-    "No silent geoid substitution",
-    "Reject unsupported geoid models; never coerce",
-    "Emit audit event 'geoid_rejected' with requested model and allowlist",
-    "Deterministic output",
-    "Allowlist from config.geodetic.geoid_model; default GEOID18"
+    "Identical input + config yields byte-identical _geodetic_report.json",
+    "No timestamps in report payload",
+    "Deterministic audit event ordering where applicable",
+    "Golden LAS fixture only; no network"
   ],
   "files_allowed": [
     "totali/geodetic/gatekeeper.py",
-    "tests/test_geodetic.py",
-    "tests/test_geodetic_geoid.py"
+    "tests/test_geodetic_deterministic.py"
   ],
   "upstream_interfaces": [
     "totali/audit/logger.py::AuditLogger.log",
     "totali/pipeline/base_phase.py::PipelinePhase",
     "totali/pipeline/context.py::PipelineContext"
   ],
-  "audit_events_allowed": ["geoid_validated", "geoid_rejected"],
+  "audit_events_allowed": ["geoid_validated", "unit_validated", "ingest"],
   "gates": [
     "ruff check totali/geodetic/ tests/",
-    "pytest tests/test_geodetic.py -v",
-    "pytest tests/test_geodetic_geoid.py -v",
+    "pytest tests/test_geodetic_deterministic.py -v",
     "pytest tests/test_integration.py -v",
     "audit_chain_verify on produced run"
   ]

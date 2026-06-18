@@ -1,0 +1,111 @@
+# In-person demo config: BV_BASE coded survey (EPSG:2232) + USGS LAS (EPSG:26913 inference).
+# Geodetic gates ACTIVE. Do not set auto_promote.
+
+project:
+  name: "TOTaLi_InPerson"
+  version: "0.1.0"
+  pls_authority: "CO PLS #XXXXX"
+
+geodetic:
+  allowed_crs:
+    - "EPSG:2231"
+    - "EPSG:2232"
+    - "EPSG:2233"
+    - "EPSG:6428"
+    - "EPSG:6430"
+    - "EPSG:26913"
+  required_epoch: "2010.0"
+  geoid_model: "GEOID18"
+  allowed_geoid_models:
+    - "GEOID18"
+  unit_tolerance_ft: 0.01
+  reject_on_mixed_datum: true
+  reject_on_missing_crs: true
+  elevation_unit: "US_survey_foot"
+  crs_inference_enabled: true
+  crs_confidence_threshold: 0.8
+  auto_assign_high_confidence: true
+  quarantine_ui_port: 5050
+  jurisdiction_zones:
+    - epsg: 26913
+      name: "NAD83 / UTM zone 13N (USGS LPC Colorado)"
+      xy_min: [300000, 4100000]
+      xy_max: [500000, 4400000]
+
+segmentation:
+  model_path: "models/point_transformer_v2.onnx"
+  device: "cpu"
+  classes:
+    0: "unclassified"
+    2: "ground"
+    3: "low_vegetation"
+    4: "medium_vegetation"
+    5: "high_vegetation"
+    6: "building"
+    7: "noise"
+    9: "water"
+    10: "rail"
+    11: "road"
+    13: "wire_guard"
+    14: "wire_conductor"
+    15: "tower"
+    17: "bridge"
+    64: "curb"
+    65: "hardscape"
+  confidence_threshold: 0.75
+  occlusion_threshold: 0.30
+  batch_size: 65536
+  voxel_size: 0.05
+
+extraction:
+  dtm:
+    max_triangle_edge_length: 50.0
+    max_triangle_angle: 85.0
+    thin_factor: 0.1
+  breaklines:
+    min_angle_degrees: 15.0
+    min_length_ft: 5.0
+    smoothing_iterations: 2
+  contours:
+    interval_ft: 1.0
+    index_interval_ft: 5.0
+    smoothing_tolerance: 0.5
+  planimetrics:
+    min_building_area_sqft: 100.0
+    simplify_tolerance: 0.25
+
+cad_shielding:
+  format: "dxf"
+  geometry_healing:
+    close_tolerance: 0.001
+    degenerate_face_threshold: 0.0001
+    self_intersection_check: true
+  layer_mapping:
+    ground_surface: "TOTaLi-SURV-DTM-DRAFT"
+    breaklines: "TOTaLi-SURV-BRKLN-DRAFT"
+    contours_minor: "TOTaLi-SURV-CONT-MINOR-DRAFT"
+    contours_index: "TOTaLi-SURV-CONT-INDEX-DRAFT"
+    buildings: "TOTaLi-PLAN-BLDG-DRAFT"
+    curbs: "TOTaLi-PLAN-CURB-DRAFT"
+    hardscape: "TOTaLi-PLAN-HDSC-DRAFT"
+    wire: "TOTaLi-PLAN-WIRE-DRAFT"
+    occlusion_zones: "TOTaLi-QA-OCCLUSION"
+    uncertainty_flags: "TOTaLi-QA-FLAGS"
+  certified_layer_suffix: ""
+  middleware_timeout_sec: 30
+  max_retry: 3
+
+linting:
+  ghost_opacity: 0.4
+  flag_colors:
+    high_confidence: "#00FF00"
+    medium_confidence: "#FFAA00"
+    low_confidence: "#FF0000"
+    occluded: "#FF00FF"
+  auto_promote: false
+  require_pls_signature: true
+
+audit:
+  log_dir: "audit_logs"
+  log_format: "jsonl"
+  hash_algorithm: "sha256"
