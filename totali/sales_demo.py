@@ -119,8 +119,13 @@ def demo(
 
     _print_step(SALES_STEPS[0], f"input={las.name}")
 
+    raw_log_dir = config.get("audit", {}).get("log_dir", "audit_logs")
+    log_dir = Path(raw_log_dir)
+    if not log_dir.is_absolute():
+        log_dir = out / "audit"
+
     audit_logger = audit or AuditLogger(
-        log_dir=config.get("audit", {}).get("log_dir", "audit_logs"),
+        log_dir=str(log_dir),
         project_id=project_id,
     )
 
@@ -165,9 +170,7 @@ def demo(
         "metrics_path": str(metrics_path) if metrics_path.exists() else None,
         "manual_baseline_sec": manual_baseline_sec,
         "classification_authoritative": (
-            result.classification.authoritative
-            if result.classification is not None
-            else None
+            result.classification.authoritative if result.classification is not None else None
         ),
     }
 
