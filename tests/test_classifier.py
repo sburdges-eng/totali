@@ -169,6 +169,22 @@ class TestExistingClassificationPassthrough:
         # so no point may carry it; labels come from elevation rules only.
         assert not np.any(result.confidences == 0.85)
 
+    def test_partial_passthrough_mixes_existing_and_rules(self, classifier):
+        import laspy
+
+        las = laspy.read("fake")
+        n = len(las.points)
+        assert n >= 4
+        cls = np.zeros(n, dtype=np.uint8)
+        cls[: n // 2] = 6  # half pre-classified (building), half unclassified (0)
+        las.classification = cls
+        xyz = np.column_stack([las.x, las.y, las.z])
+        result = classifier._classify_rules(xyz, las)
+        # pre-classified half copied at conf 0.85; unclassified half from rules.
+        assert np.all(result.labels[: n // 2] == 6)
+        assert np.all(result.confidences[: n // 2] == 0.85)
+        assert not np.any(result.confidences[n // 2 :] == 0.85)
+
     def test_passthrough_is_audited(self, classifier):
         from unittest.mock import patch
 

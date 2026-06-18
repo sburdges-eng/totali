@@ -2131,13 +2131,20 @@ def resolve_dwg2dxf() -> str | None:
     """
     # 1. Explicit env override
     env_val = os.getenv("LIBREDWG_DWG2DXF", "").strip()
-    if (
-        env_val
-        and Path(env_val).is_file()
-        and os.access(env_val, os.X_OK)
-        and _dwg2dxf_runnable(env_val)
-    ):
-        return env_val
+    if env_val:
+        if (
+            Path(env_val).is_file()
+            and os.access(env_val, os.X_OK)
+            and _dwg2dxf_runnable(env_val)
+        ):
+            return env_val
+        import warnings
+
+        warnings.warn(
+            f"LIBREDWG_DWG2DXF={env_val!r} is set but is not a runnable dwg2dxf "
+            "binary; ignoring it and falling back to the vendored/PATH lookup.",
+            stacklevel=2,
+        )
 
     # 2. Vendored binary — walk up the directory tree
     candidate = Path(__file__).resolve()

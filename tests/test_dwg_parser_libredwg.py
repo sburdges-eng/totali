@@ -99,4 +99,7 @@ class TestResolverRobustness:
         broken.chmod(0o755)
         monkeypatch.setenv("LIBREDWG_DWG2DXF", str(broken))
         monkeypatch.setattr(parser.shutil, "which", lambda _: None)
+        # Intentionally env-robust: in environments with a working vendored/PATH
+        # dwg2dxf, resolve returns that (a working binary); with none, it returns
+        # None. Either way the broken env binary must NOT be selected.
         assert parser.resolve_dwg2dxf() != str(broken)

@@ -14,7 +14,7 @@ the walkthrough go in `MEETING_CAPTURE_SHEET_2026-06-18.md`.
 | 2 — Real LAS | USGS tile (gates active, CRS inference) | `…/usgs_las/totali_draft_output.dxf` | `…/audit_las/INPERSON-LAS_*.jsonl` |
 | 3 — Sales Key Flow | synth_topo.las (7-step narrative) | `…/sales_keyflow/totali_draft_output.dxf` | `…/sales_keyflow/audit/INPERSON-SALES_*.jsonl` |
 
-Sales Key Flow ran all 7 steps; `total_duration_sec ≈ 0.70` vs `manual_baseline_sec = 14400` (4 h) — speed/provenance step printed `audit_verify=PASS`.
+Sales Key Flow ran all 7 steps; `total_duration_sec ≈ 0.70` vs `manual_baseline_sec = 14400` (4 h — **PLACEHOLDER, not a measured manual baseline**; see M2 SC evidence SC2 / KTD5) — speed/provenance step printed `audit_verify=PASS`.
 
 ## 2. Audit chain verifies — `verify_log` PASS on all three
 
