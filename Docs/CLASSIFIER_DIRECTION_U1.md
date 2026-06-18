@@ -50,3 +50,89 @@ Ran the in-repo **rule-based baseline** classifier (`totali/segmentation/classif
 ## 6. Recommendation (provisional)
 
 Lean **Option A (adapt pretrained)** as the first experiment *once a richer labeled tile exists*, because labeled survey LiDAR is scarce and adaptation needs the least data — but **do not commit** until item 5.1/5.2 land. Until then, the deterministic **coded-survey field-code path** remains the trustworthy production route; raw-LAS ML classification stays a spike. Re-run `tools/classifier_spike.py` on the richer tile to produce the real adapt-vs-train number.
+
+---
+
+## 7. Synthetic richer-tile spike (2026-06-18, SIMULATED stand-in)
+
+> **BANNER — SYNTHETIC DATA.**
+> No real partner tile has been received. This section uses a programmatically generated LAS fixture
+> (`tests/fixtures/survey_corpus/synth_multiclass.las`, seed 1701, deterministic) to mimic a
+> richer multi-class tile. Results here **do not substitute for partner data** and are marked
+> provisional/synthetic throughout. This section will be superseded once a real labeled tile lands.
+
+### Fixture summary
+
+| Attribute | Value |
+|-----------|-------|
+| Generator | `tools/generate_synth_multiclass_las.py` (seed 1701, deterministic) |
+| File | `tests/fixtures/survey_corpus/synth_multiclass.las` |
+| Points | **800** |
+| ASPRS classes | **5** (2 ground, 3 low-veg, 5 high-veg, 6 building, 9 water) |
+| Elevation design | water < ground < low-veg < high-veg ≈ building (overlapping bands) |
+| CRS | EPSG:2232 Colorado Central |
+
+### Class distribution
+
+| Class | Name | Count | % |
+|-------|------|-------|---|
+| 2 | ground | 200 | 25.0% |
+| 3 | low_vegetation | 150 | 18.8% |
+| 5 | high_vegetation | 150 | 18.8% |
+| 6 | building | 200 | 25.0% |
+| 9 | water | 100 | 12.5% |
+
+### Rule-baseline accuracy vs. synthetic labels
+
+Classifier path: `_classify_rules` (elevation-percentile binning), `trust_existing_classification=False`
+enforced via `_LasNoClassification` wrapper (same guard as the original B6 spike).
+
+| Metric | Value |
+|--------|-------|
+| **Overall accuracy** | **42.9% (0.4288)** |
+| Ground (cls 2) F1 | 0.5542 |
+| Low-veg (cls 3) F1 | 0.7467 |
+| High-veg (cls 5) F1 | 0.4018 |
+| Building (cls 6) F1 | 0.0000 |
+| Water (cls 9) F1 | 0.0000 |
+
+**Key confusions:**
+- Building (cls 6) → predicted as high-vegetation 100% of the time (elevation-band overlap; the rule baseline has no planarity or return-intensity signal to distinguish them).
+- Water (cls 9) → predicted as ground 100% of the time (the below-grade depression z-range falls into the ground percentile bucket).
+
+**Interpretation (synthetic context):**
+The rule-based elevation-percentile classifier reaches ~43% overall on a 5-class problem where
+majority-class chance is 25%. It has meaningful signal for vegetation tiers (low-veg F1 = 0.75)
+but fails completely on building and water — the two classes most dependent on non-elevation
+features (planarity, return density, intensity). This is consistent with the prior result on the
+USGS tile and confirms the rule baseline's structural limitation: it is a placeholder, not a contender,
+for any class that requires spectral or geometric cues beyond elevation.
+
+### LOCKED PROVISIONAL DIRECTION (U1 — 2026-06-18, SYNTHETIC)
+
+**Direction: Option A — Adapt a pretrained point cloud model.**
+
+Rationale:
+1. The rule baseline fails on the classes (building, water) that matter most for survey deliverables.
+   The accuracy gap between rule-based and a pretrained point-transformer (which embeds planarity,
+   return-count, and local geometry) is expected to be substantial — consistent with the published
+   literature on PointNet++/Point-Transformer on AHN/ISPRS benchmarks.
+2. Labeled survey LiDAR from a partner is scarce. Adaptation (fine-tuning a pretrained model on a
+   small labeled subset) is the pragmatic fit given the likely data volume.
+3. Custom training (Option B) remains open if partner geometry/equipment proves highly idiosyncratic —
+   assess after seeing the real labeled tile.
+
+**Contingencies (all MUST be satisfied before the direction becomes firm):**
+
+- [ ] **C1.** Receive a real labeled partner tile with ≥5 occupied ASPRS classes.
+- [ ] **C2.** Re-run `tools/classifier_spike.py` on that tile; confirm the rule-baseline gap
+      is ≥20pp OA below a pretrained baseline (otherwise Option C may suffice).
+- [ ] **C3.** Verify a pretrained model with a compatible open license exists for the target
+      point density and sensor type.
+- [ ] **C4.** Resolve the `_classify_rules` passthrough behavior (Section 3 above) before any
+      integration-test accuracy measurement.
+
+Until C1–C4 land, the **coded-survey field-code path** remains the sole production-trusted route.
+Raw-LAS ML classification stays in spike/experimental status.
+
+Spike artifact: `.tmp/classifier_spike_synth/results.json`
