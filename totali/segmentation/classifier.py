@@ -44,6 +44,13 @@ class PointCloudClassifier(PipelinePhase):
         self.batch_size = config.get("batch_size", 65536)
         self.voxel_size = config.get("voxel_size", 0.05)
         self.classes = config.get("classes", {})
+        # U1 eval-hazard guard: passthrough of the input LAS's existing
+        # classification is an explicit, audited mode. Default True preserves
+        # "trust the surveyor's/vendor's classification"; set False for honest
+        # accuracy evaluation (see Docs/CLASSIFIER_DIRECTION_U1.md).
+        self.trust_existing_classification = config.get(
+            "trust_existing_classification", True
+        )
         # U1: optional integrity inputs threaded into the sha256/manifest loader.
         self.expected_sha256 = config.get("expected_sha256")
         self.manifest = config.get("manifest")
@@ -227,12 +234,28 @@ class PointCloudClassifier(PipelinePhase):
         labels[high_pts] = 6
         confidences[high_pts] = 0.35
 
-        # Use existing classification if available
-        if hasattr(las, "classification"):
+        # Use existing classification if available — EXPLICIT, AUDITED passthrough.
+        # This copies input-file labels over rule predictions, so it must stay
+        # visible: an accuracy measurement against the same input labels is
+        # otherwise trivially ~100% (eval hazard). Disable for honest evaluation
+        # via trust_existing_classification=False.
+        if self.trust_existing_classification and hasattr(las, "classification"):
             existing = np.array(las.classification)
             has_class = existing > 0
-            labels[has_class] = existing[has_class]
-            confidences[has_class] = 0.85  # trust existing classification more
+            override_count = int(np.count_nonzero(has_class))
+            if override_count:
+                labels[has_class] = existing[has_class]
+                confidences[has_class] = 0.85  # trust existing classification more
+                self.audit.log(
+                    "classify",
+                    {
+                        "existing_classification_passthrough": override_count,
+                        "note": (
+                            "labels copied from input LAS classification, "
+                            "not produced by the classifier"
+                        ),
+                    },
+                )
 
         return ClassificationResult(labels=labels, confidences=confidences)
 

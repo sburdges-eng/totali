@@ -135,3 +135,56 @@ class TestPhaseRun:
         assert cls.mean_confidence > 0
         assert isinstance(cls.class_counts, dict)
         assert cls.occlusion_mask is not None
+
+
+class TestExistingClassificationPassthrough:
+    """U1 eval-hazard guard: the rule classifier's passthrough of the input
+    LAS's own classification must be an EXPLICIT, AUDITED, disableable mode so
+    accuracy measurements vs the same input labels aren't trivially ~100%."""
+
+    def test_default_trust_copies_existing(self, classifier):
+        import laspy
+
+        las = laspy.read("fake")
+        n = len(las.points)
+        las.classification = np.full(n, 6, dtype=np.uint8)
+        xyz = np.column_stack([las.x, las.y, las.z])
+        result = classifier._classify_rules(xyz, las)
+        # Default behavior preserved: existing labels trusted at conf 0.85.
+        assert np.all(result.labels == 6)
+        assert np.all(result.confidences == 0.85)
+
+    def test_trust_disabled_uses_rules_only(self, audit_logger, sample_config):
+        import laspy
+
+        cfg = dict(sample_config["segmentation"])
+        cfg["trust_existing_classification"] = False
+        clf = PointCloudClassifier(cfg, audit_logger)
+        las = laspy.read("fake")
+        n = len(las.points)
+        las.classification = np.full(n, 6, dtype=np.uint8)
+        xyz = np.column_stack([las.x, las.y, las.z])
+        result = clf._classify_rules(xyz, las)
+        # Passthrough disabled: 0.85 is the exclusive signature of passthrough,
+        # so no point may carry it; labels come from elevation rules only.
+        assert not np.any(result.confidences == 0.85)
+
+    def test_passthrough_is_audited(self, classifier):
+        from unittest.mock import patch
+
+        import laspy
+
+        las = laspy.read("fake")
+        n = len(las.points)
+        las.classification = np.full(n, 6, dtype=np.uint8)
+        xyz = np.column_stack([las.x, las.y, las.z])
+        with patch.object(classifier.audit, "log") as mock_log:
+            classifier._classify_rules(xyz, las)
+        payloads = [
+            c.args[1]
+            for c in mock_log.call_args_list
+            if len(c.args) >= 2 and isinstance(c.args[1], dict)
+        ]
+        assert any("existing_classification_passthrough" in d for d in payloads)
+        evt = next(d for d in payloads if "existing_classification_passthrough" in d)
+        assert evt["existing_classification_passthrough"] == n

@@ -80,4 +80,12 @@ Missing / to add:
 - Confidence histogram appears in `context.artifacts["segmentation"]["summary"]`.
 
 ## Progress (append-only)
-- _(empty)_
+- 2026-06-18 — U1 eval-hazard fix: the rule classifier's passthrough of the
+  input LAS's existing `classification` codes is now an EXPLICIT, AUDITED,
+  disableable mode. `_classify_rules` gates the copy on
+  `trust_existing_classification` (config, default True = preserve "trust the
+  surveyor's classification") and logs `existing_classification_passthrough`
+  (override count) to the audit chain. Set False for honest accuracy eval so
+  rule predictions are not overwritten by the input's own labels (prevents the
+  trivially ~100% measurement flagged in the U1 spike). Tests:
+  tests/test_classifier.py::TestExistingClassificationPassthrough (3). Suite 960 passed / 2 skipped.
