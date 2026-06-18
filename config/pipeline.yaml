@@ -31,12 +31,21 @@ geodetic:
   crs_confidence_threshold: 0.8
   auto_assign_high_confidence: true
   quarantine_ui_port: 5050
-  # TODO(partner-data): populate with the design partner's single State Plane
-  # zone and its projected XY applicability envelope, then set
-  # crs_inference_enabled: true. Each entry:
-  #   { epsg: <allowed EPSG>, name: <zone>, xy_min: [E, N], xy_max: [E, N] }
-  # Envelopes are jurisdiction data we don't have yet — do NOT invent values.
-  jurisdiction_zones: []
+  # PROVISIONAL zone — demo-derived (NOT invented): the Chaffee Co (BV_BASE
+  # coded survey) envelope from pipeline_in_person.yaml. A real Colorado State
+  # Plane zone whose EPSG (2232) is in allowed_crs above. The demo's San Luis /
+  # UTM 26913 zone is intentionally NOT promoted — 26913 is not in production
+  # allowed_crs (it was a USGS mechanical stand-in, not partner State Plane).
+  # This is NOT the design partner's confirmed operating area; crs_inference_enabled
+  # stays FALSE so production ingestion behavior is unchanged. REPLACE with the
+  # partner's confirmed zone envelope and only then flip crs_inference_enabled:
+  # true (see Docs/MEETING_CAPTURE_SHEET_2026-06-18.md Part D). Do NOT invent new
+  # values; add only partner-confirmed zones (whose EPSG must be in allowed_crs).
+  jurisdiction_zones:
+    - epsg: 2232
+      name: "NAD83 / Colorado Central (ftUS) — Buena Vista / Chaffee Co [PROVISIONAL]"
+      xy_min: [2780000, 1350000]
+      xy_max: [2840000, 1390000]
 
 # Phase 2: ML Segmentation
 segmentation:
