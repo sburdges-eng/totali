@@ -1,0 +1,14 @@
+---
+description: TOTaLi stack + scope pin. Always loaded.
+alwaysApply: true
+---
+
+# TOTaLi — survey / spatial pipeline (defensible LiDAR → CAD)
+
+Read this repo's `AGENTS.md` / `CLAUDE.md` and `Docs/CXX_AGENTIC_RULES.md` first.
+
+- **Stack:** Python + C++. The pipeline lives under `projects/TOTaLi/totali/`.
+- **Scope:** stay inside `projects/TOTaLi/`. Defensible spatial **provenance** is the whole
+  point — preserve the audit / authority discipline. This is the origin of the
+  TOTaLi-compatible audit chain that `CaDi/cadi-audit` must stay byte-compatible with; don't
+  add a second, unaudited path or break the audit format.
