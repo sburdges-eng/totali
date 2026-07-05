@@ -69,4 +69,15 @@ Missing / to add (in this module or `tests/`):
 - README updated to reflect production status (drop the "stub" language).
 
 ## Progress (append-only)
-- _(empty)_
+- 2026-06-18 — DP-1: built-in DWG→DXF default converter wired into
+  `survey-automation-roadmap/dwg-tool-parser/scripts/parse_dwg.py`. New
+  `resolve_dwg2dxf()` (precedence: `LIBREDWG_DWG2DXF` env → walk-up for
+  `vendor/libredwg/bin/dwg2dxf` → `dwg2dxf` on `$PATH`) + `convert_dwg_to_dxf_libredwg()`
+  (subprocess `dwg2dxf -y -o <out> <in>`, no FFI → CXX FFI rules N/A). DWG input
+  now parses with no `--converter-cmd`; pipeline still consumes DXF; JSON schema
+  unchanged (adds `conversion.converter="libredwg"`). Vendored LibreDWG 0.13.4 at
+  `~/Dev/CAD/vendor/libredwg` (resolves the "submodule vs operator install" open
+  question toward vendored + auto-discovery). Tests: `tests/test_dwg_parser_libredwg.py`
+  (resolver precedence + real DWG→DXF→JSON, skipif binary absent); updated
+  `test_dwg_parser.py::test_dwg_without_resolvable_converter_raises` to the new
+  contract. Suite green: 956 passed / 2 skipped. Still open: DP-4 fuzz, DP-6 round-trip, DP-7 CLI hardening.

@@ -3,8 +3,8 @@
 **Created:** 2026-06-17 (Cursor)  
 **Heavy lane:** tmux pane `[5] 0:2.1.179*` — Claude Code v2.1.179, Opus 4.8 (1M), xhigh effort  
 **Fast lane:** Cursor Agent (this workspace)  
-**Repo:** `~/Dev/CAD/projects/TOTaLi` (`main` @ `ce99dec8`, synced with `origin/main`)  
-**Verified baseline:** `.venv/bin/python -m pytest -q` → **942 passed, 2 skipped**; laser-suite **23/23**; RC gate **PASS** (2026-06-17)
+**Repo:** `~/Dev/CAD/projects/TOTaLi` (`main` @ `f06c3b1c`, synced with `origin/main`)  
+**Verified baseline:** `.venv/bin/python -m pytest -q` → **948 passed, 2 skipped**; laser-suite **23/23**; RC gate **PASS** (2026-06-17)
 
 ---
 
@@ -28,13 +28,13 @@
 5. `artifacts/SESSION_HANDOFF_2026-06-17.md` (this file)
 6. Target module `<module>/AGENTIC.md` Plan step only
 
-**Stale warning:** ~~`AGENTIC_ORCHESTRATION.md` Block 6~~ **Reconciled 2026-06-17** — `current_generation` → **G-7** (geodetic GEOID). Trust **ledger + mapping doc** for history.
+**Stale warning:** `AGENTIC_ORCHESTRATION.md` Block 6 → **G-9** (geodetic determinism). Trust **ledger + mapping doc** for history.
 
 ---
 
 ## 3. Current baseline (2026-06-17)
 
-### Green / landed (ledger + PRs #96–#113)
+### Green / landed (ledger + PRs #96–#115)
 
 - Core invariants codified (`auto_promote`, PLS signature, DRAFT layers, audit chain)
 - Full 5-phase pipeline E2E + audit verify (PR #104)
@@ -43,6 +43,8 @@
 - dwg-tool-parser DP-2/DP-3 (ezdxf DXF), laser-suite LS-2/LS-3 oracles + **config/adjustment fixes (#112)**
 - Models M-1 ONNX loader; REPL R-1 contracts; quarantine Q-4 audit
 - **Geodetic G-5/G-6** — sub-threshold CRS inference → quarantine UI (#109)
+- **Geodetic G-7/G-8** — GEOID allowlist + `pyproj_version`/`proj_version` on all geodetic audit payloads (#115)
+- **Handoff docs** — post-#113 state + Block 6 reconcile (#114)
 - **AUTOMATICCAD corpus prune** — 157 system-app mirror paths removed; 10 DWG/DXF fixtures remain (#111)
 - **Cloud bootstrap** — `pyarrow>=16.0.0` + venv pip repair docs (#113)
 - **`v2_release_candidate_gate.sh` PASS** — PT II golden 6/6, eval + arbitration green
@@ -51,20 +53,20 @@
 
 | ID | Issue | Owner | First action |
 |----|-------|-------|--------------|
-| **ENV-1** | ~~Local `pytest` collection errors~~ | Cursor | **Resolved** — `.venv/bin/python -m pytest -q` (**942 passed** / 2 skipped) |
+| **ENV-1** | ~~Local `pytest` collection errors~~ | Cursor | **Resolved** — `.venv/bin/python -m pytest -q` (**948 passed** / 2 skipped) |
 | **GIT-1** | ~~Dirty tree (mass `AUTOMATICCAD/files/` deletions)~~ | Cursor | **Resolved** — corpus prune merged (#111); stashes cleared |
-| **B-1** | ~~`tests/test_geodetic_quarantine_trigger.py`~~ | Cursor | **Done** — merged #109 |
-| **GIT-2** | ~~`main` behind `origin/main`~~ | Cursor | **Resolved** — synced @ `ce99dec8` |
+| **B-1** | ~~Geodetic G-5..G-8~~ | Cursor | **Done** — #109 (G-5/G-6), #115 (G-7/G-8) |
+| **GIT-2** | ~~`main` behind `origin/main`~~ | Cursor | **Resolved** — synced @ `f06c3b1c` |
 | **RC-1** | ~~`v2_release_candidate_gate.sh` unverified~~ | Cursor | **Resolved** — PASS after `pyarrow` install |
 | **DOC-1** | Module `AGENTIC.md` Progress sections empty despite ledger entries | Heavy | Reconcile ledger → Progress append-only sections |
-| **ORCH-1** | ~~`AGENTIC_ORCHESTRATION.md` Block 6 stale~~ | Cursor | **Resolved** — `current_generation` → G-7 |
+| **ORCH-1** | ~~`AGENTIC_ORCHESTRATION.md` Block 6 stale~~ | Cursor | **Resolved** — `current_generation` → **G-9** |
 
 ### Owed for §9 Definition of Done (project-level)
 
 | # | Criterion | Status | Lane |
 |---|-----------|--------|------|
 | 1 | All §2 modules report DoD in `AGENTIC.md` | **Partial** — tests exist; Progress/DoD checkboxes not maintained | Heavy reconcile, then Fast implement gaps |
-| 2 | `pytest -q` zero pending-work skips | **Green locally** — 942 passed / 2 skipped; laser-suite 23/23 | — |
+| 2 | `pytest -q` zero pending-work skips | **Green locally** — 948 passed / 2 skipped; laser-suite 23/23 | — |
 | 3 | BV_BASE golden `.las` → certified DXF E2E | **Blocked** — Google Drive hydration timeouts (`BV_BASE_data_reference_and_test_outcomes.md`) | Human + data-reroute |
 | 4 | `v2_release_candidate_gate.sh` PASS | **PASS** (2026-06-17) | — |
 | 5 | Byte-reproducible artifacts (2 machines) | Not demonstrated | Heavy design test matrix |
@@ -89,7 +91,7 @@ Use `select_next_task`: lowest pending plan step whose upstream gates are green.
 
 | Step | Module | Plan IDs | Lane | Notes |
 |------|--------|----------|------|-------|
-| B-1 | geodetic | ~~G-5/G-6~~ **done** (#109); **G-7..G-9** next (GEOID allowlist, pyproj version in audit, determinism test) | Fast | G-7 is Block 6 `current_generation` |
+| B-1 | geodetic | ~~G-5..G-8~~ **done** (#109, #115); **G-9** next — byte-reproducible `_geodetic_report.json` (partial: `test_geodetic_deterministic.py` covers unit events only) | Fast | Block 6 `current_generation` |
 | B-2 | segmentation | S-2 device fallback docs, ONNX stub for CI | Fast | |
 | B-3 | cad_shielding | C-5..C-7 if any open post-PR #97 | Fast | Mapping says C-7 landed |
 | B-4 | linting | L-6+ if any beyond L-5 | Fast | L-5 deferred flow landed |
@@ -176,14 +178,14 @@ Options:  <2-3 paths>
 
 ### Cursor (now)
 
-1. **B-1 / G-7** — GEOID18 allowlist enforcement + test (`totali/geodetic/gatekeeper.py`)
-2. **G-8** — capture `pyproj.__version__` + PROJ release in geodetic audit payloads
-3. Append ledger after green gates; open PR on `agentic/*`
+1. **G-9** — extend `tests/test_geodetic_deterministic.py` for byte-identical `_geodetic_report.json` on golden LAS input (two runs)
+2. Close geodetic module DoD in `totali/geodetic/AGENTIC.md` after G-9 green
+3. Append ledger; PR on `agentic/*`
 
 ### Claude Code `[5]` (paste next)
 
 ```
-Read origin/main @ ce99dec8 (#109–#113 merged). artifacts/SESSION_HANDOFF_2026-06-17.md + ledger tail.
+Read origin/main @ f06c3b1c (#109–#115 merged). artifacts/SESSION_HANDOFF_2026-06-17.md + ledger tail.
 
 Task HEAVY-1: Reconcile completion_ledger.jsonl against all totali/*/AGENTIC.md Progress sections. Produce append-only Progress drafts per module.
 
@@ -217,3 +219,21 @@ From `AGENTIC_COMPLETION_PLAN.md` §1 — both lanes enforce:
 **CAD platform:** TOTaLi `external/` contracts have live auracad + L4L adapters (not stubs); InGENeer can orchestrate a survey intent packet into TOTaLi phases; laser-suite + survey-automation feed normalized bundles; AUTOMATICCAD corpus curated and reproducible.
 
 **Orchestration:** Ledger + handoff docs stay current; Heavy/Fast lanes do not duplicate work; halts are explicit with evidence.
+
+---
+
+## 9. U4 / LAS validation status (2026-06-18, honest)
+
+**Claim under test:** "the USGS tile passes the mechanical contract; partner job LAS still pending."
+
+**Evidenced this session:**
+- **Mechanical contract — PASS.** `USGS_CO_SanLuis_8764.las` (26,635 pts) runs the full pipeline end-to-end via `tools/run_partner_las_e2e.py --config config/pipeline_in_person.yaml`: all 5 phases green (`geodetic → segment → extract → shield → lint`), `success=True`, **3,528 DRAFT entities**, `totali_draft_output.dxf` + append-only audit (`.jsonl` + `.metrics.json`) produced. This is the structural/mechanical contract only.
+- **Coded-survey batch (`tools/batch_asc_smoke.py`):** `21-034 export.asc` → PASS (32 entities). `1-1018…asc` and `points.asc` → **halted by the geodetic gate** (coords outside every configured `jurisdiction_zone`). This is the gate working correctly, not a bug — but it means the in-person config's single EPSG:2232 zone (Chaffee bounds) does **not** cover those job sites. See `artifacts/asc_smoke_results_2026-06-18.md`.
+
+**Still PENDING (not validated):**
+1. **Partner's actual job LAS** — not provided/hydrated. The USGS public tile is a stand-in, not partner data.
+2. **Classification quality** — unvalidated. Spike (`artifacts/classifier_spike_2026-06-18.md`): rule baseline 0.70% OA, no ONNX model present, USGS tile has only 2 ASPRS classes → inadequate to validate any classifier (see `Docs/CLASSIFIER_DIRECTION_U1.md`, U1).
+3. **Jurisdiction-zone coverage** — partner job sites beyond the BV_BASE/Chaffee bounds need their zones added before their `.asc`/LAS will pass the geodetic gate.
+
+**Bottom line:** mechanical pipeline contract is demonstrably met on a real LAS; **substantive** validation (real partner job data + classification accuracy + multi-site jurisdiction coverage) is **pending partner inputs**.
+

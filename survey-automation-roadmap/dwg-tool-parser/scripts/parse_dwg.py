@@ -421,7 +421,11 @@ def extract_spot_elevation_value(text: str) -> float | None:
         return None
 
     # Prefer explicit elevation labels such as "EL=123.45".
-    labeled = re.search(r"(?:\bEL\b|\bELEV(?:ATION)?\b|\bZ\b)\s*[:=]?\s*([-+]?\d+(?:\.\d+)?)", compact, re.IGNORECASE)
+    labeled = re.search(
+        r"(?:\bEL\b|\bELEV(?:ATION)?\b|\bZ\b)\s*[:=]?\s*([-+]?\d+(?:\.\d+)?)",
+        compact,
+        re.IGNORECASE,
+    )
     if labeled:
         return safe_float(labeled.group(1))
 
@@ -528,7 +532,9 @@ def add_common_attrs(entity: dict[str, Any], attrs: list[tuple[str, str]], preci
         entity["thickness"] = thickness
 
 
-def normalize_ascii_entity(raw_entity: dict[str, Any], index: int, precision: int) -> dict[str, Any]:
+def normalize_ascii_entity(
+    raw_entity: dict[str, Any], index: int, precision: int
+) -> dict[str, Any]:
     entity_type = str(raw_entity.get("type", "UNKNOWN"))
     attrs: list[tuple[str, str]] = raw_entity.get("attrs", [])
     entity_id = first_attr(attrs, "5") or f"entity-{index + 1}"
@@ -579,8 +585,7 @@ def normalize_ascii_entity(raw_entity: dict[str, Any], index: int, precision: in
 
             bulges_raw = [safe_float(value) for value in all_attr(attrs, "42")]
             bulges = [
-                round_number(value, precision) if value is not None else 0.0
-                for value in bulges_raw
+                round_number(value, precision) if value is not None else 0.0 for value in bulges_raw
             ]
             if bulges and any((value or 0.0) != 0.0 for value in bulges):
                 geometry["bulges"] = bulges[: len(vertices)]
@@ -698,7 +703,11 @@ def normalize_ascii_entity(raw_entity: dict[str, Any], index: int, precision: in
         for point_index in range(count):
             x = x_values[point_index]
             y = y_values[point_index]
-            z = z_values[point_index] if point_index < len(z_values) and z_values[point_index] is not None else 0.0
+            z = (
+                z_values[point_index]
+                if point_index < len(z_values) and z_values[point_index] is not None
+                else 0.0
+            )
             if x is None or y is None:
                 continue
             point = normalize_point([x, y, z], precision)
@@ -1404,7 +1413,7 @@ def estimate_geometry_length(geometry: dict[str, Any], precision: int) -> float 
         minor_radius = abs(major_radius * ratio)
         if major_radius == 0 or minor_radius == 0:
             return None
-        circumference = 2.0 * math.pi * math.sqrt((major_radius ** 2 + minor_radius ** 2) / 2.0)
+        circumference = 2.0 * math.pi * math.sqrt((major_radius**2 + minor_radius**2) / 2.0)
         return round_number(circumference, precision)
 
     return None
@@ -1494,13 +1503,13 @@ def build_survey_domain_coverage(
         boundary_evidence.append("parcel/boundary layers detected")
     if loop_count > 0:
         boundary_score += 1
-        boundary_evidence.append(f"{loop_count} topology loops support boundary/retracement analysis")
+        boundary_evidence.append(
+            f"{loop_count} topology loops support boundary/retracement analysis"
+        )
     boundary_matches = matched_domain_keywords(context_tokens, "boundary_retracement_surveys")
     if boundary_matches:
         boundary_score += min(2, len(boundary_matches))
-        boundary_evidence.append(
-            "matched naming conventions: " + ", ".join(boundary_matches[:5])
-        )
+        boundary_evidence.append("matched naming conventions: " + ", ".join(boundary_matches[:5]))
 
     gps_gis_score = 0
     gps_gis_evidence: list[str] = []
@@ -1521,21 +1530,23 @@ def build_survey_domain_coverage(
     gps_gis_matches = matched_domain_keywords(context_tokens, "gps_gis_surveying")
     if gps_gis_matches:
         gps_gis_score += min(2, len(gps_gis_matches))
-        gps_gis_evidence.append(
-            "matched naming conventions: " + ", ".join(gps_gis_matches[:5])
-        )
+        gps_gis_evidence.append("matched naming conventions: " + ", ".join(gps_gis_matches[:5]))
 
     subdivision_score = 0
     subdivision_evidence: list[str] = []
     if parcel_count > 0:
         subdivision_score += min(3, parcel_count)
-        subdivision_evidence.append(f"{parcel_count} parcel loop candidates support subdivision workflows")
+        subdivision_evidence.append(
+            f"{parcel_count} parcel loop candidates support subdivision workflows"
+        )
     if "parcel_boundary" in groups:
         subdivision_score += 1
         subdivision_evidence.append("lot/property/easement style layers detected")
     if feature_counts.get("centerlines", 0) > 0:
         subdivision_score += 1
-        subdivision_evidence.append("centerline geometry can support lot-line adjustment coordination")
+        subdivision_evidence.append(
+            "centerline geometry can support lot-line adjustment coordination"
+        )
     subdivision_matches = matched_domain_keywords(
         context_tokens,
         "subdivisions_lot_adjustments_easements",
@@ -1582,7 +1593,9 @@ def build_survey_domain_coverage(
         construction_evidence.append("construction support layer naming detected")
     if edge_count > 0:
         construction_score += 1
-        construction_evidence.append("topology edges available for as-built/route continuity checks")
+        construction_evidence.append(
+            "topology edges available for as-built/route continuity checks"
+        )
     construction_matches = matched_domain_keywords(
         context_tokens,
         "construction_support_surveys",
@@ -1600,19 +1613,21 @@ def build_survey_domain_coverage(
         remote_evidence.append("remote sensing layer keywords detected (LiDAR/UAV/bathymetry/etc.)")
     if entity_total >= 5000:
         remote_score += 1
-        remote_evidence.append(f"large entity count ({entity_total}) suggests remote/specialized capture datasets")
+        remote_evidence.append(
+            f"large entity count ({entity_total}) suggests remote/specialized capture datasets"
+        )
     if spot_points + contours >= 100:
         remote_score += 1
         remote_evidence.append("dense elevation geometry suggests remote survey support use")
     if control_points > 0 and connected_components > 0:
         remote_score += 1
-        remote_evidence.append("control + topology signals support specialized survey georeferencing workflows")
+        remote_evidence.append(
+            "control + topology signals support specialized survey georeferencing workflows"
+        )
     remote_matches = matched_domain_keywords(context_tokens, "remote_specialized_surveying")
     if remote_matches:
         remote_score += min(2, len(remote_matches))
-        remote_evidence.append(
-            "matched naming conventions: " + ", ".join(remote_matches[:5])
-        )
+        remote_evidence.append("matched naming conventions: " + ", ".join(remote_matches[:5]))
 
     return {
         "boundary_retracement_surveys": domain_result(boundary_score, boundary_evidence),
@@ -1804,7 +1819,9 @@ def build_civil_survey_summary(
     max_abs_xy = None
     if bounds_min is not None and bounds_max is not None:
         bounds = {"min": bounds_min, "max": bounds_max}
-        max_abs_xy = max(abs(bounds_min[0]), abs(bounds_min[1]), abs(bounds_max[0]), abs(bounds_max[1]))
+        max_abs_xy = max(
+            abs(bounds_min[0]), abs(bounds_min[1]), abs(bounds_max[0]), abs(bounds_max[1])
+        )
 
     insunits_code = safe_int(summary.get("insunits"))
     insunits_name = INSUNITS_MAP.get(insunits_code) if insunits_code is not None else None
@@ -1812,15 +1829,23 @@ def build_civil_survey_summary(
     coordinate_system_hint = "insufficient geometry for coordinate-system inference"
     if max_abs_xy is not None:
         if max_abs_xy <= 360 and (insunits_code is None or insunits_code == 0):
-            coordinate_system_hint = "small coordinate magnitude; verify local grid vs geographic-like values"
+            coordinate_system_hint = (
+                "small coordinate magnitude; verify local grid vs geographic-like values"
+            )
         elif max_abs_xy >= 100000 and insunits_name in {"feet", "meters", "kilometers", "yards"}:
-            coordinate_system_hint = "magnitude suggests projected survey coordinates (state plane/UTM/local grid)"
+            coordinate_system_hint = (
+                "magnitude suggests projected survey coordinates (state plane/UTM/local grid)"
+            )
         else:
-            coordinate_system_hint = "coordinate magnitude appears consistent with local engineering coordinates"
+            coordinate_system_hint = (
+                "coordinate magnitude appears consistent with local engineering coordinates"
+            )
 
     qa_flags: list[str] = []
     if insunits_code is None or insunits_code == 0:
-        qa_flags.append("INSUNITS is missing or unitless; verify drawing units before quantity checks.")
+        qa_flags.append(
+            "INSUNITS is missing or unitless; verify drawing units before quantity checks."
+        )
     if feature_counts["parcel_boundaries"] == 0:
         qa_flags.append("No closed parcel boundary candidates were detected.")
     if "contour" in category_layers and feature_counts["contours"] == 0:
@@ -1829,10 +1854,15 @@ def build_civil_survey_summary(
         qa_flags.append(
             f"Topology has {topology.get('connected_components')} disconnected components."
         )
-    if feature_counts["spot_elevation_points"] == 0 and feature_counts["spot_elevation_labels"] == 0:
+    if (
+        feature_counts["spot_elevation_points"] == 0
+        and feature_counts["spot_elevation_labels"] == 0
+    ):
         qa_flags.append("No spot elevation points or labels were detected.")
     if contour_unique and len(contour_unique) == 1:
-        qa_flags.append("Only one contour elevation level was detected; verify contour interval source.")
+        qa_flags.append(
+            "Only one contour elevation level was detected; verify contour interval source."
+        )
 
     terrain_summary: dict[str, Any] = {
         "contour_count": feature_counts["contours"],
@@ -1842,7 +1872,9 @@ def build_civil_survey_summary(
     if all_z_values:
         terrain_summary["elevation_min"] = round_number(min(all_z_values), precision)
         terrain_summary["elevation_max"] = round_number(max(all_z_values), precision)
-        terrain_summary["elevation_span"] = round_number(max(all_z_values) - min(all_z_values), precision)
+        terrain_summary["elevation_span"] = round_number(
+            max(all_z_values) - min(all_z_values), precision
+        )
 
     parcel_candidates_sorted = sorted(
         parcel_candidates,
@@ -1856,8 +1888,7 @@ def build_civil_survey_summary(
     )
 
     layer_groups = {
-        category: sorted(layer_names)
-        for category, layer_names in sorted(category_layers.items())
+        category: sorted(layer_names) for category, layer_names in sorted(category_layers.items())
     }
     context_sources: list[str] = []
     context_sources.extend(summary.get("layers", []))
@@ -1914,8 +1945,7 @@ def build_civil_survey_summary(
             "min": round_number(min(spot_elevations), precision) if spot_elevations else None,
             "max": round_number(max(spot_elevations), precision) if spot_elevations else None,
             "samples": [
-                round_number(value, precision)
-                for value in sorted(spot_elevations)[:sample_limit]
+                round_number(value, precision) for value in sorted(spot_elevations)[:sample_limit]
             ],
         },
         "survey_domains": survey_domains,
@@ -1923,7 +1953,9 @@ def build_civil_survey_summary(
     }
 
 
-def build_topology(entities: list[dict[str, Any]], tolerance: float, precision: int) -> dict[str, Any]:
+def build_topology(
+    entities: list[dict[str, Any]], tolerance: float, precision: int
+) -> dict[str, Any]:
     if tolerance <= 0:
         raise ParseError("tolerance must be > 0.")
 
@@ -2048,7 +2080,9 @@ def build_topology(entities: list[dict[str, Any]], tolerance: float, precision: 
         if neighbor_nodes
     }
 
-    junction_nodes = sum(1 for node_id in node_ids if len(neighbors.get(node_id, set())) not in {0, 2})
+    junction_nodes = sum(
+        1 for node_id in node_ids if len(neighbors.get(node_id, set())) not in {0, 2}
+    )
 
     return {
         "tolerance": tolerance,
@@ -2062,6 +2096,39 @@ def build_topology(entities: list[dict[str, Any]], tolerance: float, precision: 
         "loops": loops,
         "adjacency": adjacency,
     }
+
+
+def resolve_dwg2dxf() -> str | None:
+    """Return an absolute path to a dwg2dxf binary, or None if not found.
+
+    Resolution precedence:
+      1. Env var ``LIBREDWG_DWG2DXF`` (absolute path override)
+      2. Vendored binary: walk up from this file's directory searching for
+         ``vendor/libredwg/bin/dwg2dxf`` (supports both in-repo and sibling
+         vendor layouts)
+      3. ``dwg2dxf`` on ``$PATH``
+    """
+    # 1. Explicit env override
+    env_val = os.getenv("LIBREDWG_DWG2DXF", "").strip()
+    if env_val and Path(env_val).is_file() and os.access(env_val, os.X_OK):
+        return env_val
+
+    # 2. Vendored binary — walk up the directory tree
+    candidate = Path(__file__).resolve()
+    for _ in range(10):  # cap at 10 levels to avoid runaway traversal
+        candidate = candidate.parent
+        vendored = candidate / "vendor" / "libredwg" / "bin" / "dwg2dxf"
+        if vendored.is_file() and os.access(str(vendored), os.X_OK):
+            return str(vendored)
+        if candidate == candidate.parent:
+            break
+
+    # 3. $PATH lookup
+    on_path = shutil.which("dwg2dxf")
+    if on_path:
+        return on_path
+
+    return None
 
 
 def build_converter_command(
@@ -2139,6 +2206,52 @@ def convert_dwg_to_dxf(
     return output_path, temp_dir, command_text
 
 
+def convert_dwg_to_dxf_libredwg(
+    input_path: Path,
+    dwg2dxf_bin: str,
+) -> tuple[Path, Path, str]:
+    """Convert a DWG file to DXF using the vendored/resolved LibreDWG dwg2dxf binary.
+
+    dwg2dxf writes the output DXF alongside the input by default (same stem, .dxf
+    extension, in the current working directory).  We run it from a temp dir so the
+    output lands there cleanly without touching the source directory.
+
+    Returns (output_dxf_path, temp_dir, dwg2dxf_bin).
+    """
+    temp_dir = Path(tempfile.mkdtemp(prefix="dwg-parser-"))
+    output_path = temp_dir / f"{input_path.stem}.dxf"
+
+    # dwg2dxf writes <stem>.dxf in cwd; -y overwrites if already present,
+    # -o lets us specify an explicit output path.
+    command_parts = [dwg2dxf_bin, "-y", "-o", str(output_path), str(input_path)]
+    command_text = " ".join(command_parts)
+
+    try:
+        completed = subprocess.run(
+            command_parts,
+            capture_output=True,
+            text=True,
+            timeout=300,
+            cwd=str(temp_dir),
+        )
+    except subprocess.TimeoutExpired:
+        shutil.rmtree(temp_dir, ignore_errors=True)
+        raise ParseError("LibreDWG dwg2dxf timed out after 300 seconds.") from None
+
+    if completed.returncode != 0:
+        stderr = completed.stderr.strip() or "(no stderr)"
+        shutil.rmtree(temp_dir, ignore_errors=True)
+        raise ParseError(f"LibreDWG dwg2dxf failed (exit {completed.returncode}): {stderr}")
+
+    if not output_path.exists():
+        shutil.rmtree(temp_dir, ignore_errors=True)
+        raise ParseError(
+            f"LibreDWG dwg2dxf completed but output DXF was not created: {output_path}"
+        )
+
+    return output_path, temp_dir, dwg2dxf_bin
+
+
 def parse_input(
     input_path: Path,
     converter_template: str | None,
@@ -2157,19 +2270,38 @@ def parse_input(
         raise ParseError("Input file is empty (0 bytes).")
 
     if suffix == ".dwg":
-        if not converter_template:
-            raise ParseError(
-                "DWG input requires a converter command. Set --converter-cmd or DWG_TO_DXF_CMD."
+        if converter_template:
+            # Explicit template supplied — use the existing template-based path.
+            dxf_path, temp_dir, resolved_command = convert_dwg_to_dxf(
+                input_path=input_path,
+                converter_template=converter_template,
             )
-        dxf_path, temp_dir, resolved_command = convert_dwg_to_dxf(
-            input_path=input_path,
-            converter_template=converter_template,
-        )
-        conversion_info = {
-            "used": True,
-            "command": resolved_command,
-            "output_dxf": str(dxf_path),
-        }
+            conversion_info = {
+                "used": True,
+                "converter": "template",
+                "command": resolved_command,
+                "output_dxf": str(dxf_path),
+            }
+        else:
+            # No explicit template — try the built-in LibreDWG dwg2dxf default.
+            dwg2dxf_bin = resolve_dwg2dxf()
+            if dwg2dxf_bin is None:
+                raise ParseError(
+                    "DWG input requires a converter. No dwg2dxf binary was found. "
+                    "Set --converter-cmd / DWG_TO_DXF_CMD (custom template), "
+                    "LIBREDWG_DWG2DXF (path to dwg2dxf), "
+                    "or install LibreDWG so dwg2dxf is on $PATH."
+                )
+            dxf_path, temp_dir, used_bin = convert_dwg_to_dxf_libredwg(
+                input_path=input_path,
+                dwg2dxf_bin=dwg2dxf_bin,
+            )
+            conversion_info = {
+                "used": True,
+                "converter": "libredwg",
+                "dwg2dxf_bin": used_bin,
+                "output_dxf": str(dxf_path),
+            }
     elif suffix != ".dxf":
         raise ParseError("Unsupported input type. Use a .dwg or .dxf file.")
 

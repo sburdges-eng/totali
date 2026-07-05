@@ -40,3 +40,28 @@ AUTOMATICCAD/files/Library/
 # Confidential partner/client survey data — NEVER commit (real PLS field data,
 # client jobs, BLM monuments). Field codes, point clouds, CRD/ASC/PCS exports.
 totali/data/
+
+# Local research exports and large binaries (regenerate locally)
+Docs/*.pdf
+Docs/*.zip
+Docs/*.docx
+Docs/requirements.txt
+artifacts/
+BV_BASE_data_reference_and_test_outcomes.md
+
+# Node / baton UI
+totali-baton/node_modules/
+
+# Runtime audit and reroute logs (local only)
+audit_logs/
+data-reroute/logs/
+laser-suite/artifacts-integration/
+
+# Claude local settings
+.claude/settings.local.json
+
+# Local machine inventory / SSD reroute (never commit paths)
+data-reroute/
+
+# Cross-repo conflict extraction scratch
+tools/extracted_snippets_v2/

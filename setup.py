@@ -30,6 +30,7 @@ setup(
             "pdal>=3.2.0",
             "rich>=13.0.0",
             "matplotlib>=3.7.0",
+            "lazrs>=0.5.0",
         ],
     },
     entry_points={
