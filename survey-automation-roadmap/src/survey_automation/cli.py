@@ -70,7 +70,7 @@ def _build_parser() -> argparse.ArgumentParser:
 
     profile_parser = subparsers.add_parser("profile", help="Profile input files and detected types")
     profile_parser.add_argument("--input-dir", required=True, help="Directory with input files")
-    profile_parser.add_argument("--output", required=True, help="JSON output path")
+    profile_parser.add_argument("--output", required=False, help="JSON output path")
     profile_parser.add_argument(
         "--config",
         required=False,
@@ -174,11 +174,14 @@ def cmd_profile(args: argparse.Namespace) -> int:
             return 3
 
     input_dir = Path(args.input_dir).resolve()
-    output_path = Path(args.output).resolve()
     profile = profile_input(input_dir=input_dir, config=config)
-    output_path.parent.mkdir(parents=True, exist_ok=True)
-    output_path.write_text(json.dumps(profile, indent=2, sort_keys=True), encoding="utf-8")
-    if not args.quiet:
+
+    if args.output:
+        output_path = Path(args.output).resolve()
+        output_path.parent.mkdir(parents=True, exist_ok=True)
+        output_path.write_text(json.dumps(profile, indent=2, sort_keys=True), encoding="utf-8")
+
+    if not args.quiet and not args.output:
         _print_json(profile)
     return 0
 

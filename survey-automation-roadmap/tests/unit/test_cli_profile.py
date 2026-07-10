@@ -85,3 +85,41 @@ def test_profile_command_quiet_suppresses_stdout(tmp_path, capsys) -> None:
     assert exit_code == 0
     assert output.exists()
     assert capsys.readouterr().out.strip() == ""
+
+
+def test_profile_command_without_output_prints_to_stdout(tmp_path, capsys) -> None:
+    input_dir = tmp_path / "input"
+    input_dir.mkdir(parents=True, exist_ok=True)
+    (input_dir / "a.csv").write_text("Field Code,Layer,Symbol,Linework\nCP,PNTS,DOT1,YES\n", encoding="utf-8")
+
+    exit_code = main(
+        [
+            "profile",
+            "--input-dir",
+            str(input_dir),
+        ]
+    )
+    assert exit_code == 0
+    stdout = capsys.readouterr().out.strip()
+    payload = json.loads(stdout)
+    assert payload["files_total"] == 1
+
+
+def test_profile_command_with_output_suppresses_stdout_by_default(tmp_path, capsys) -> None:
+    input_dir = tmp_path / "input"
+    input_dir.mkdir(parents=True, exist_ok=True)
+    (input_dir / "a.csv").write_text("Field Code,Layer,Symbol,Linework\nCP,PNTS,DOT1,YES\n", encoding="utf-8")
+    output = tmp_path / "profile.json"
+
+    exit_code = main(
+        [
+            "profile",
+            "--input-dir",
+            str(input_dir),
+            "--output",
+            str(output),
+        ]
+    )
+    assert exit_code == 0
+    assert output.exists()
+    assert capsys.readouterr().out.strip() == ""
