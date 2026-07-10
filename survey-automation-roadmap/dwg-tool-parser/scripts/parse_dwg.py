@@ -303,7 +303,11 @@ def is_point(value: Any) -> bool:
         return False
     if len(value) < 3:
         return False
-    return all(isinstance(coord, (int, float)) for coord in value[:3])
+    return (
+        isinstance(value[0], (int, float))
+        and isinstance(value[1], (int, float))
+        and isinstance(value[2], (int, float))
+    )
 
 
 def normalize_point(value: Any, precision: int) -> list[float] | None:
