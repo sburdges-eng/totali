@@ -90,6 +90,52 @@ class TestOcclusionDetection:
         mask = classifier._detect_occlusions(sample_points, result)
         assert not mask.all(), "High confidence points shouldn't all be flagged"
 
+    def test_under_canopy_occlusion(self, classifier):
+        """Points between ground and high vegetation should be flagged."""
+        # ground=2, high_veg=5
+        xyz = np.array([
+            [0, 0, 0],   # Ground
+            [0, 0, 5],   # Under canopy point
+            [0, 0, 10],  # High vegetation
+        ], dtype=np.float32)
+
+        result = ClassificationResult(
+            labels=np.array([2, 0, 5], dtype=np.int32),
+            confidences=np.array([0.9, 0.9, 0.9], dtype=np.float32),
+        )
+
+        mask = classifier._detect_occlusions(xyz, result)
+
+        assert not mask[0], "Ground should not be occluded by canopy logic"
+        assert mask[1], "Point between ground and canopy should be occluded"
+        assert not mask[2], "Canopy itself should not be occluded by canopy logic"
+
+    def test_no_occlusion_without_vegetation(self, classifier):
+        """Canopy logic should not trigger if no high vegetation is present."""
+        xyz = np.array([
+            [0, 0, 0],
+            [0, 0, 5],
+        ], dtype=np.float32)
+        result = ClassificationResult(
+            labels=np.array([2, 0], dtype=np.int32),
+            confidences=np.array([0.9, 0.9], dtype=np.float32),
+        )
+        mask = classifier._detect_occlusions(xyz, result)
+        assert not mask.any()
+
+    def test_no_occlusion_without_ground(self, classifier):
+        """Canopy logic should not trigger if no ground is present."""
+        xyz = np.array([
+            [0, 0, 5],
+            [0, 0, 10],
+        ], dtype=np.float32)
+        result = ClassificationResult(
+            labels=np.array([0, 5], dtype=np.int32),
+            confidences=np.array([0.9, 0.9], dtype=np.float32),
+        )
+        mask = classifier._detect_occlusions(xyz, result)
+        assert not mask.any()
+
 
 class TestFeatureBuilding:
     def test_xyz_only_features(self, classifier):
