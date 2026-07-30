@@ -135,3 +135,40 @@ class TestPhaseRun:
         assert cls.mean_confidence > 0
         assert isinstance(cls.class_counts, dict)
         assert cls.occlusion_mask is not None
+
+class TestModelLoading:
+    def test_load_model_import_error(self, classifier, tmp_path):
+        """Test that _load_model handles ImportError when onnxruntime is missing."""
+        import sys
+        from unittest.mock import patch
+
+        # Create a dummy model file so it passes the existence check
+        model_file = tmp_path / "dummy.onnx"
+        model_file.write_text("dummy content")
+        classifier.model_path = str(model_file)
+
+        # Mock onnxruntime to raise ImportError when imported
+        with patch.dict(sys.modules, {"onnxruntime": None}):
+            # We need to ensure that 'import onnxruntime' in _load_model fails.
+            # PointCloudClassifier._load_model does 'import onnxruntime as ort'.
+            # Patching sys.modules with None causes an ImportError.
+            success = classifier._load_model()
+
+        assert success is False
+        assert classifier.session is None
+
+        # Verify warning was logged
+        events = classifier.audit.get_events("classify")
+        assert any("onnxruntime not available" in e["data"].get("warning", "") for e in events)
+
+    def test_load_model_not_found(self, classifier):
+        """Test that _load_model handles missing model file."""
+        classifier.model_path = "nonexistent_model.onnx"
+        success = classifier._load_model()
+
+        assert success is False
+        assert classifier.session is None
+
+        # Verify warning was logged
+        events = classifier.audit.get_events("classify")
+        assert any("Model not found" in e["data"].get("warning", "") for e in events)
